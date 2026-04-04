@@ -1,0 +1,8 @@
+[package]
+name = "layuit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+indexmap = "2.13.1"
+thunderdome = "0.6.1"
