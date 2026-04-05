@@ -1,26 +1,27 @@
 //! # A basic UI layout library.
-//! 
+//!
 //! Layuit provides many basic UI components and allows the user to build a UI tree with them.
 
 #![warn(clippy::all)]
 #![deny(clippy::unwrap_used)]
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use thunderdome::{Arena, Index as TdIndex};
 
-pub mod containers;
+pub mod stacks;
+pub mod padding;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 /// An alignment of any sort, for example determining node placement.
-/// 
+///
 /// Begin refers to the left or top. End refers to the right or bottom.
 pub enum Alignment {
     Begin,
     Center,
     End,
     #[default]
-    Full
+    Full,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
@@ -29,7 +30,7 @@ pub struct Rect {
     pub x: f32,
     pub y: f32,
     pub width: f32,
-    pub height: f32
+    pub height: f32,
 }
 
 impl Rect {
@@ -39,7 +40,7 @@ impl Rect {
             x,
             y,
             width,
-            height
+            height,
         }
     }
 
@@ -84,34 +85,34 @@ impl Rect {
     }
 
     /// Create a contained rectangle aligned within `self`.
-    /// 
+    ///
     /// Example:
-    /// 
+    ///
     /// ```rust
     /// let rect = Rect::new(0.0, 0.0, 100.0, 100.0);
-    /// 
-    /// let contained_center = rect.align((Alignment::Center, Alignment::Center), 50.0, 50.0);
+    ///
+    /// let contained_center = rect.align((Alignment::Center, Alignment::Center), (50.0, 50.0));
     /// assert_eq!(contained, Rect::new(25.0, 25.0, 50.0, 50.0));
-    /// 
-    /// let contained_top_right = rect.align((Alignment::End, Alignment::Begin), 50.0, 50.0);
+    ///
+    /// let contained_top_right = rect.align((Alignment::End, Alignment::Begin), (50.0, 50.0));
     /// assert_eq!(contained, Rect::new(50.0, 0.0, 50.0, 50.0));
-    /// 
-    /// let contained_equal = rect.align((Alignment::Full, Alignment::Full), 50.0, 50.0);
+    ///
+    /// let contained_equal = rect.align((Alignment::Full, Alignment::Full), (50.0, 50.0));
     /// assert_eq!(contained, Rect::new(0.0, 0.0, 100.0, 100.0));
     /// ```
-    pub fn align(mut self, align: (Alignment, Alignment), min_w: f32, min_h: f32) -> Self {
+    pub fn align(mut self, align: (Alignment, Alignment), min: (f32, f32)) -> Self {
         self = match align.0 {
-            Alignment::Begin => self.shrink_begin_x(self.width - min_w),
-            Alignment::Center => self.shrink_center_x(self.width - min_w),
-            Alignment::End => self.shrink_end_x(self.width - min_w),
-            Alignment::Full => self
+            Alignment::Begin => self.shrink_begin_x(self.width - min.0),
+            Alignment::Center => self.shrink_center_x(self.width - min.0),
+            Alignment::End => self.shrink_end_x(self.width - min.0),
+            Alignment::Full => self,
         };
 
         match align.1 {
-            Alignment::Begin => self.shrink_begin_y(self.height - min_h),
-            Alignment::Center => self.shrink_center_y(self.height - min_h),
-            Alignment::End => self.shrink_end_y(self.height - min_h),
-            Alignment::Full => self
+            Alignment::Begin => self.shrink_begin_y(self.height - min.1),
+            Alignment::Center => self.shrink_center_y(self.height - min.1),
+            Alignment::End => self.shrink_end_y(self.height - min.1),
+            Alignment::Full => self,
         }
     }
 }
@@ -124,28 +125,31 @@ pub trait UiNode: std::any::Any {
     fn get_align_mut(&mut self) -> &mut (Alignment, Alignment);
 
     /// Calculate the minimum size of the node.
-    fn get_min_size(&self) -> (f32, f32);
+    fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32);
 
-    /// Get the computed position and size of the node. If it has not been calculated yet, returns
-    /// [`Default::default`].
-    fn get_rect(&self) -> Rect;
-
-    /// Recalculate the position and size of the node *after* alignment has been applied.
-    fn calculate_rect(&mut self, space: Rect);
+    /// Recalculate the position and size of child nodes, in the same order as [`get_children`].
+    ///
+    /// [`get_children`]: Self::get_children
+    fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect>;
 
     /// Get all children of the node, if applicable.
-    fn get_children(&self) -> Vec<NodeIndex> {
+    fn get_children(&self) -> Vec<TdIndex> {
         Vec::new()
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NodeIndex(TdIndex);
+#[derive(Copy, Clone, Debug, Default)]
+/// Cached layout information for a node.
+pub struct NodeCache {
+    pub min_size: (f32, f32),
+    pub rect: Rect,
+}
 
-/// A tree of UI nodes.
+/// A tree of UI nodes, stored as an arena.
 pub struct UiTree {
     root: TdIndex,
-    arena: Arena<Box<dyn UiNode>>
+    arena: Arena<Box<dyn UiNode>>,
+    cache: HashMap<TdIndex, NodeCache>,
 }
 
 impl UiTree {
@@ -155,44 +159,90 @@ impl UiTree {
         let index = arena.insert(Box::new(root) as Box<dyn UiNode>);
         Self {
             root: index,
-            arena
+            arena,
+            cache: HashMap::new(),
         }
     }
 
-    /// Add a node to the arena, although it may not be immediately exist in the tree.
-    pub fn add_node(&mut self, node: impl UiNode) -> NodeIndex {
+    /// Add a node to the arena.
+    pub fn add_node(&mut self, node: impl UiNode) -> TdIndex {
         let index = self.arena.insert(Box::new(node) as Box<dyn UiNode>);
-        NodeIndex(index)
+        self.cache.insert(index, Default::default());
+        index
     }
 
-    /// Add a pre-boxed node to the arena.
-    pub fn add_boxed(&mut self, node: Box<dyn UiNode>) -> NodeIndex {
-        let index = self.arena.insert(node);
-        NodeIndex(index)
-    }
-    
-    /// Remove a node and all of its descendants from the arena.
-    pub fn remove_node(&mut self, index: NodeIndex) {
-        let mut queue: VecDeque<_> = self.arena[index.0].get_children().into();
-        while let Some(child) = queue.pop_front() {
-            queue.extend(self.arena[child.0].get_children());
-            self.arena.remove(child.0);
+    /// Remove a node and all of its children from the arena.
+    /// 
+    /// # Panics
+    /// If the index is invalid or the tree is malformed. Removing the root node also panics.
+    pub fn remove_node(&mut self, index: TdIndex) {
+        if index == self.root {
+            panic!("Cannot remove root node");
         }
-        self.arena.remove(index.0);
+        
+        let mut queue: VecDeque<_> = self.arena[index].get_children().into();
+        while let Some(child) = queue.pop_front() {
+            queue.extend(self.arena[child].get_children());
+            self.arena.remove(child);
+            self.cache.remove(&index);
+        }
+        self.arena.remove(index);
+        self.cache.remove(&index);
+    }
+
+    pub fn get_cache(&self, index: TdIndex) -> Option<&NodeCache> {
+        self.cache.get(&index)
+    }
+
+    /// Get a mutable reference to the cached layout information for a node.
+    pub fn get_cache_mut(&mut self, index: TdIndex) -> Option<&mut NodeCache> {
+        self.cache.get_mut(&index)
     }
 
     /// Get a reference to a node.
-    pub fn get_node(&self, index: NodeIndex) -> &dyn UiNode {
-        &*self.arena[index.0]
+    pub fn get_node(&self, index: TdIndex) -> Option<&dyn UiNode> {
+        self.arena.get(index).map(|node| &**node)
     }
 
     /// Get a mutable reference to a node.
-    pub fn get_node_mut(&mut self, index: NodeIndex) -> &mut dyn UiNode {
-        &mut *self.arena[index.0]
+    pub fn get_node_mut(&mut self, index: TdIndex) -> Option<&mut dyn UiNode> {
+        self.arena.get_mut(index).map(|node| &mut **node)
     }
 
-    /// Get the index of the root node.
-    pub fn get_root(&self) -> NodeIndex {
-        NodeIndex(self.root)
+    /// Get a reference to the root node.
+    pub fn get_root(&self) -> &dyn UiNode {
+        &**self.arena.get(self.root).expect("Root not valid")
+    }
+
+    /// Get a mutable reference to the root node.
+    pub fn get_root_mut(&mut self) -> &mut dyn UiNode {
+        &mut **self.arena.get_mut(self.root).expect("Root not valid")
+    }
+
+    /// Calculate the layout information for all nodes in the tree.
+    /// 
+    /// # Panics
+    /// If the tree is malformed
+    pub fn calculate_cache(&mut self) {
+        // Queue to visit now
+        let mut visit_stack = vec![self.root];
+        // Queue to visit later
+        let mut min_stack = Vec::new();
+        while let Some(v) = visit_stack.pop() {
+            min_stack.push(v);
+            visit_stack.extend(self.arena[v].get_children());
+        }
+
+        for v in min_stack.iter().rev() {
+            let min = self.arena[*v].calculate_min_size(self);
+            self.cache.entry(*v).and_modify(|e| e.min_size = min);
+        }
+
+        for v in min_stack {
+            let rects = self.arena[v].calculate_rects(&self.cache[&v], self);
+            for (child, rect) in self.arena[v].get_children().iter().zip(rects) {
+                self.cache.entry(*child).and_modify(|e| e.rect = rect);
+            }
+        }
     }
 }
