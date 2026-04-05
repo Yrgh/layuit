@@ -92,7 +92,7 @@
 //! [`HStack`] or [`VStack`]. A custom node can also be used.
 //! 
 //! ```rust
-//! use layuit::{UiTree, UiNode};
+//! use layuit::{UiTree, UiNode, NodeVisitor};
 //! use layuit::stacks::HStack;
 //! 
 //! // The root node can be any UiNode, but must be specified.
@@ -117,9 +117,11 @@
 //!     // ...
 //! }
 //! 
-//! impl layuit::NodeVisitor for Renderer {
+//! impl NodeVisitor for Renderer {
 //!     fn visit(&mut self, node: &mut dyn UiNode, rect: layuit::Rect) {
-//!         // ...
+//!         if let Some(label) = node.downcast_mut::<Label>() {
+//!             // ...
+//!         }
 //!     }
 //! }
 //! 
@@ -127,12 +129,25 @@
 //! tree.visit(&mut renderer);
 //! ```
 //! 
+//! ## Provided nodes
+//! 
+//! Containers:
+//! - [`HStack`] - Horizontal arrangement
+//! - [`VStack`] - Vertical arrangement
+//! - [`Overlap`] - Independent arrangement of children
+//! - [`Margin`] - Adds padding to a child
+//! - [`Minimum`] - Creates a minimum size constraint for precise control
+//! 
 //! [`calculate_min_size`]: UiNode::calculate_min_size
 //! [`calculate_rects`]: UiNode::calculate_rects
 //! [`HStack`]: stacks::HStack
 //! [`VStack`]: stacks::VStack
 //! [`Overlap`]: overlap::Overlap
 //! [`Margin`]: padding::Margin
+//! [`Minimum`]: padding::Minimum
+//! 
+//! [`thunderdome`]: https://crates.io/crates/thunderdome
+//! [`thunderdome::Index`]: https://docs.rs/thunderdome/latest/thunderdome/struct.Index.html
 
 #![warn(clippy::all)]
 #![deny(clippy::unwrap_used)]

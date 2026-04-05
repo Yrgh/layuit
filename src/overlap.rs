@@ -1,7 +1,7 @@
 //! Containers of independent children
 //! 
 //! [`Overlap`] is a container that arranges its children independently on top of each other. Each
-//! child aligns to the entire size of the container and no restriction is applied.
+//! child is aligned to the space of the entire container and no restrictions are applied.
 
 use indexmap::IndexSet;
 use thunderdome::Index as TdIndex;
@@ -25,7 +25,7 @@ impl Overlap {
         }
     }
 
-    /// Add a child to the stack, at the end.
+    /// Add a new child to the stack.
     ///
     /// See [`add_child`].
     ///
@@ -35,19 +35,13 @@ impl Overlap {
         self
     }
 
-    /// Set the horizontal and vertical alignment.
-    ///
-    /// A vertical alignment of [`Full`] will not function as expected, and will have the same
-    /// appearance as [`Begin`].
-    ///
-    /// [`Full`]: Alignment::Full
-    /// [`Begin`]: Alignment::Begin
+    /// Set the horizontal and vertical alignment of the container, not the children.
     pub fn with_align(mut self, align: (Alignment, Alignment)) -> Self {
         self.align = align;
         self
     }
 
-    /// Add a child to the stack. The child will appear at the end.
+    /// Add a child to the stack. The child will appear on top (last-visited).
     pub fn add_child(&mut self, child: impl UiNode, tree: &mut UiTree) {
         let index = tree.add_node(child);
         self.children.insert(index);
@@ -81,7 +75,7 @@ impl Overlap {
         true
     }
 
-    /// Move a child to a new index.
+    /// Move a child to a new index. Lower indices are visited first.
     ///
     /// Returns `true` if the child was moved.
     pub fn set_child_position(&mut self, index: usize, position: usize) -> bool {

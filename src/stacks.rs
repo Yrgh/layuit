@@ -24,7 +24,7 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
 /// A horizontal arrangement of UI nodes with configurable spacing.
 ///
-/// Nodes can be reordered and add/removed at any time.
+/// Nodes can be reordered and added/removed at any time.
 ///
 /// Nodes always appear at their minimum size horizontally, regardless of alignment. Vertical
 /// alignment still applies.
@@ -46,7 +46,7 @@ impl HStack {
         }
     }
 
-    /// Add a child to the stack, at the end.
+    /// Add a new child to the stack.
     ///
     /// See [`add_child`].
     ///
@@ -177,9 +177,9 @@ impl UiNode for HStack {
 
 /// A vertical arrangement of UI nodes with configurable spacing.
 ///
-/// Nodes can be reordered and add/removed at any time.
+/// Nodes can be reordered and added/removed at any time.
 ///
-/// Nodes always appear at their minimum size vertically, regardless of alignment. Vertical
+/// Nodes always appear at their minimum size vertically, regardless of alignment. Horizontal
 /// alignment still applies.
 /// 
 /// [`Full`]: Alignment::Full
@@ -199,7 +199,7 @@ impl VStack {
         }
     }
 
-    /// Add a child to the stack, at the end.
+    /// Add a new child to the stack.
     ///
     /// See [`add_child`].
     ///

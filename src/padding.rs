@@ -30,6 +30,8 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 /// Maintains the margin as a minimum size even if `child` is `None`, however, once a child is
 /// assigned, it cannot be removed. If you intend to use the margin as a minimum size, you should
 /// use [`Minimum`] with no child instead.
+/// 
+/// [`Center`]: Alignment::Center
 pub struct Margin {
     pub left: f32,
     pub right: f32,
