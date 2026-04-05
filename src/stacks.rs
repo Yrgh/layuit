@@ -1,3 +1,22 @@
+//! Horizontal and vertical stacks of UI nodes.
+//! 
+//! [`HStack`] arranges children from left to right. [`VStack`] arranges children from top to
+//! bottom. Both support inserting spacing between children and changing the order.
+//! 
+//! ## Alignment caveats
+//! 
+//! - The alignment of children in the stack axis (horizontal for [`HStack`], vertical for
+//!   [`VStack`]) is ignored. All children are compressed to their minimum size in the stack axis.
+//! 
+//! - The alignment of the `Stack` in the stack axis cannot be [`Full`]. The stack must compress as
+//!   well as the children. `Full` creates extra space that the stack does not handle. If `Full` is
+//!   used, it will have the same appearance as [`Begin`].
+//! 
+//! The cross axis alignment of children and stacks works as expected.
+//! 
+//! [`Full`]: Alignment::Full
+//! [`Begin`]: Alignment::Begin
+
 use indexmap::IndexSet;
 use thunderdome::Index as TdIndex;
 
@@ -15,7 +34,7 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 pub struct HStack {
     align: (Alignment, Alignment),
     children: IndexSet<TdIndex>,
-    spacing: f32,
+    pub spacing: f32,
 }
 
 impl HStack {
@@ -39,13 +58,11 @@ impl HStack {
 
     /// Set the horizontal and vertical alignment.
     ///
-    /// The horizontal alignment cannot be [`Full`], as there would be extra space unassigned to
-    /// children.
-    ///
-    /// # Panics
-    /// If `align.0` is [`Full`].
+    /// A horizontal alignment of [`Full`] will not function as expected, and will have the same
+    /// appearance as [`Begin`].
     ///
     /// [`Full`]: Alignment::Full
+    /// [`Begin`]: Alignment::Begin
     pub fn with_align(mut self, align: (Alignment, Alignment)) -> Self {
         self.align = align;
         self
@@ -57,31 +74,6 @@ impl HStack {
     pub fn with_spacing(mut self, spacing: f32) -> Self {
         self.spacing = spacing;
         self
-    }
-
-    /// Set the horizontal and vertical alignment.
-    ///
-    /// See [`with_align`] for details.
-    /// 
-    /// # Panics
-    /// If `align.0` is [`Full`].
-    ///
-    /// [`with_align`]: Self::with_align
-    /// [`Full`]: Alignment::Full
-    pub fn set_align(&mut self, align: (Alignment, Alignment)) {
-        if align.0 == Alignment::Full {
-            panic!("Alignment::Full would allow extra space that is unaccounted for");
-        }
-        self.align = align;
-    }
-
-    /// Set the spacing between children.
-    ///
-    /// See [`with_spacing`] for details.
-    ///
-    /// [`with_spacing`]: Self::with_spacing
-    pub fn set_spacing(&mut self, spacing: f32) {
-        self.spacing = spacing;
     }
 
     /// Add a child to the stack. The child will appear at the end.
@@ -109,7 +101,12 @@ impl HStack {
         let Some(ti) = self.children.shift_remove_index(index) else {
             return false;
         };
-        tree.arena.remove(ti);
+
+        if tree.get_node(ti).is_none() {
+            return false;
+        }
+        tree.remove_node(ti);
+        
         true
     }
 
@@ -133,8 +130,8 @@ impl UiNode for HStack {
         self.align
     }
 
-    fn get_align_mut(&mut self) -> &mut (Alignment, Alignment) {
-        &mut self.align
+    fn get_align_mut(&mut self) -> (&mut Alignment, &mut Alignment) {
+        (&mut self.align.0, &mut self.align.1)
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
@@ -162,9 +159,10 @@ impl UiNode for HStack {
         let mut x = cache.rect.x;
         for child in &self.children {
             let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.arena.get(*child).expect("Child not in arena").as_ref();
+            let child = tree.get_node(*child).expect("Child not in arena");
+
             let space =
-                Rect::new(x, cache.rect.y, child_min.0, h).align(child.get_align(), cache.min_size);
+                Rect::new(x, cache.rect.y, child_min.0, h).align(child.get_align(), child_min);
             child_rects.push(space);
             x += child_min.0 + self.spacing;
         }
@@ -183,8 +181,6 @@ impl UiNode for HStack {
 ///
 /// Nodes always appear at their minimum size vertically, regardless of alignment. Vertical
 /// alignment still applies.
-/// 
-/// If the vertical alignment is [`Full`], the appearance will be identical to that of [`Begin`].
 /// 
 /// [`Full`]: Alignment::Full
 /// [`Begin`]: Alignment::Begin
@@ -215,13 +211,11 @@ impl VStack {
 
     /// Set the horizontal and vertical alignment.
     ///
-    /// The vertical alignment cannot be [`Full`], as there would be extra space unassigned to
-    /// children.
-    ///
-    /// # Panics
-    /// If `align.1` is [`Full`].
+    /// A vertical alignment of [`Full`] will not function as expected, and will have the same
+    /// appearance as [`Begin`].
     ///
     /// [`Full`]: Alignment::Full
+    /// [`Begin`]: Alignment::Begin
     pub fn with_align(mut self, align: (Alignment, Alignment)) -> Self {
         self.align = align;
         self
@@ -233,21 +227,6 @@ impl VStack {
     pub fn with_spacing(mut self, spacing: f32) -> Self {
         self.spacing = spacing;
         self
-    }
-
-    /// Set the horizontal and vertical alignment.
-    ///
-    /// See [`with_align`] for details.
-    /// 
-    /// # Panics
-    /// If `align.1` is [`Full`].
-    ///
-    /// [`with_align`]: Self::with_align
-    pub fn set_align(&mut self, align: (Alignment, Alignment)) {
-        if align.1 == Alignment::Full {
-            panic!("Alignment::Full would allow extra space that is unaccounted for");
-        }
-        self.align = align;
     }
 
     /// Set the spacing between children.
@@ -284,7 +263,12 @@ impl VStack {
         let Some(ti) = self.children.shift_remove_index(index) else {
             return false;
         };
-        tree.arena.remove(ti);
+
+        if tree.get_node(ti).is_none() {
+            return false;
+        }
+        tree.remove_node(ti);
+
         true
     }
 
@@ -308,8 +292,8 @@ impl UiNode for VStack {
         self.align
     }
 
-    fn get_align_mut(&mut self) -> &mut (Alignment, Alignment) {
-        &mut self.align
+    fn get_align_mut(&mut self) -> (&mut Alignment, &mut Alignment) {
+        (&mut self.align.0, &mut self.align.1)
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
@@ -340,7 +324,7 @@ impl UiNode for VStack {
             let child = tree.get_node(*child).expect("Child not in arena");
 
             let space =
-                Rect::new(cache.rect.x, y, w, child_min.1).align(child.get_align(), cache.min_size);
+                Rect::new(cache.rect.x, y, w, child_min.1).align(child.get_align(), child_min);
             child_rects.push(space);
             y += child_min.1 + self.spacing;
         }
