@@ -1,5 +1,5 @@
 //! Containers of independent children
-//! 
+//!
 //! [`Overlap`] is a container that arranges its children independently on top of each other. Each
 //! child is aligned to the space of the entire container and no restrictions are applied.
 
@@ -16,7 +16,7 @@ pub struct Overlap {
 
 impl Overlap {
     /// Create an empty `Overlap` with no child and alignment ([`Begin`], [`Begin`]).
-    /// 
+    ///
     /// [`Begin`]: Alignment::Begin
     pub fn new() -> Self {
         Self {
@@ -53,7 +53,7 @@ impl Overlap {
     }
 
     /// Returns `true` if the stack is empty.
-    /// 
+    ///
     /// Equivalent to `len() == 0`.
     pub fn is_empty(&self) -> bool {
         self.children.is_empty()

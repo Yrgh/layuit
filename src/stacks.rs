@@ -1,19 +1,20 @@
 //! Horizontal and vertical stacks of UI nodes.
-//! 
+//!
 //! [`HStack`] arranges children from left to right. [`VStack`] arranges children from top to
-//! bottom. Both support inserting spacing between children and changing the order.
-//! 
+//! bottom. Both support inserting spacing between children and changing the order that children
+//! appear in.
+//!
 //! ## Alignment caveats
-//! 
+//!
 //! - The alignment of children in the stack axis (horizontal for [`HStack`], vertical for
 //!   [`VStack`]) is ignored. All children are compressed to their minimum size in the stack axis.
-//! 
+//!
 //! - The alignment of the `Stack` in the stack axis cannot be [`Full`]. The stack must compress as
 //!   well as the children. `Full` creates extra space that the stack does not handle. If `Full` is
 //!   used, it will have the same appearance as [`Begin`].
-//! 
+//!
 //! The cross axis alignment of children and stacks works as expected.
-//! 
+//!
 //! [`Full`]: Alignment::Full
 //! [`Begin`]: Alignment::Begin
 
@@ -28,7 +29,7 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 ///
 /// Nodes always appear at their minimum size horizontally, regardless of alignment. Vertical
 /// alignment still applies.
-/// 
+///
 /// [`Full`]: Alignment::Full
 /// [`Begin`]: Alignment::Begin
 pub struct HStack {
@@ -88,7 +89,7 @@ impl HStack {
     }
 
     /// Returns `true` if the stack is empty.
-    /// 
+    ///
     /// Equivalent to `len() == 0`.
     pub fn is_empty(&self) -> bool {
         self.children.is_empty()
@@ -106,7 +107,7 @@ impl HStack {
             return false;
         }
         tree.remove_node(ti);
-        
+
         true
     }
 
@@ -155,14 +156,13 @@ impl UiNode for HStack {
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
         let mut child_rects = Vec::with_capacity(self.children.len());
 
-        let (_, h) = cache.min_size;
         let mut x = cache.rect.x;
         for child in &self.children {
             let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
             let child = tree.get_node(*child).expect("Child not in arena");
 
-            let space =
-                Rect::new(x, cache.rect.y, child_min.0, h).align(child.get_align(), child_min);
+            let space = Rect::new(x, cache.rect.y, child_min.0, cache.rect.h)
+                .align(child.get_align(), child_min);
             child_rects.push(space);
             x += child_min.0 + self.spacing;
         }
@@ -181,7 +181,7 @@ impl UiNode for HStack {
 ///
 /// Nodes always appear at their minimum size vertically, regardless of alignment. Horizontal
 /// alignment still applies.
-/// 
+///
 /// [`Full`]: Alignment::Full
 /// [`Begin`]: Alignment::Begin
 pub struct VStack {
@@ -250,7 +250,7 @@ impl VStack {
     }
 
     /// Returns `true` if the stack is empty.
-    /// 
+    ///
     /// Equivalent to `len() == 0`.
     pub fn is_empty(&self) -> bool {
         self.children.is_empty()
@@ -317,14 +317,13 @@ impl UiNode for VStack {
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
         let mut child_rects = Vec::with_capacity(self.children.len());
 
-        let (w, _) = cache.min_size;
         let mut y = cache.rect.y;
         for child in &self.children {
             let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
             let child = tree.get_node(*child).expect("Child not in arena");
 
-            let space =
-                Rect::new(cache.rect.x, y, w, child_min.1).align(child.get_align(), child_min);
+            let space = Rect::new(cache.rect.x, y, cache.rect.w, child_min.1)
+                .align(child.get_align(), child_min);
             child_rects.push(space);
             y += child_min.1 + self.spacing;
         }

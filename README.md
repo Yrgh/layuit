@@ -131,12 +131,21 @@ tree.visit(&mut renderer);
 
 ## Provided nodes
 
-Containers:
 - [`HStack`] - Horizontal arrangement
 - [`VStack`] - Vertical arrangement
 - [`Overlap`] - Independent arrangement of children
 - [`Margin`] - Adds padding to a child
 - [`Minimum`] - Creates a minimum size constraint for precise control
+- [`Spacer`] - A leaf node with configurable empty space
+- [`Clip`] - Allows a child to outgrow the node with the assumption that the renderer will
+  clip it, and enables a scroll offset to be applied if the child is larger.
+- [`AspectRatio`] - Maintains a horizontal:vertical ratio
+- [`HSplit`] - Horizontal split between two children
+- [`VSplit`] - Vertical split between two children
+- [`Percent`] - Maintains a percentage of space for a child
+- [`HEqual`] - Horizontal arrangement with each child getting equal space
+- [`VEqual`] - Vertical arrangement with each child getting equal space
+- [`Grid`] - 2D grid of children
 
 [`Rect`]: https://docs.rs/layuit/latest/layuit/struct.Rect.html
 [`Alignment`]: https://docs.rs/layuit/latest/layuit/enum.Alignment.html
@@ -153,6 +162,15 @@ Containers:
 [`Overlap`]: https://docs.rs/layuit/latest/layuit/overlap/struct.Overlap.html
 [`Margin`]: https://docs.rs/layuit/latest/layuit/padding/struct.Margin.html
 [`Minimum`]: https://docs.rs/layuit/latest/layuit/padding/struct.Minimum.html
+[`Spacer`]: https://docs.rs/layuit/latest/layuit/padding/struct.Spacer.html
+[`Clip`]: https://docs.rs/layuit/latest/layuit/clip/struct.Clip.html
+[`AspectRatio`]: https://docs.rs/layuit/latest/layuit/proportional/struct.AspectRatio.html
+[`HSplit`]: https://docs.rs/layuit/latest/layuit/proportional/struct.HSplit.html
+[`VSplit`]: https://docs.rs/layuit/latest/layuit/proportional/struct.VSplit.html
+[`Percent`]: https://docs.rs/layuit/latest/layuit/proportional/struct.Percent.html
+[`HEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.HEqual.html
+[`VEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.VEqual.html
+[`Grid`]: https://docs.rs/layuit/latest/layuit/grid/struct.Grid.html
 
 [`thunderdome`]: https://crates.io/crates/thunderdome
 [`thunderdome::Index`]: https://docs.rs/thunderdome/latest/thunderdome/struct.Index.html
