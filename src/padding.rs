@@ -144,6 +144,11 @@ impl Margin {
         self.bottom = bottom;
         self
     }
+
+    /// Get the tree index of the child.
+    pub fn get_child(&self) -> Option<TdIndex> {
+        self.child
+    }
 }
 
 impl Default for Margin {
@@ -253,6 +258,11 @@ impl Minimum {
         self.min_override = min;
         self
     }
+
+    /// Get the tree index of the child.
+    pub fn get_child(&self) -> Option<TdIndex> {
+        self.child
+    }
 }
 
 impl Default for Minimum {
@@ -304,13 +314,26 @@ pub struct Spacer {
 }
 
 impl Spacer {
-    /// Creates a new `Spacer` with no child, no size, and ([`Begin`], [`Begin`])
+    /// Creates a new `Spacer` with no size and ([`Begin`], [`Begin`])
     /// alignment.
     ///
     /// [`Begin`]: Alignment::Begin
     pub fn new() -> Self {
         Self {
             size: (0.0, 0.0),
+            align: (Alignment::Begin, Alignment::Begin),
+        }
+    }
+
+    /// Creates a new `Spacer` with the given size and ([`Begin`], [`Begin`])
+    /// alignment.
+    ///
+    /// Equivalent to `Spacer::new().with_size(size)`.
+    ///
+    /// [`Begin`]: Alignment::Begin
+    pub fn sized(size: (f32, f32)) -> Self {
+        Self {
+            size,
             align: (Alignment::Begin, Alignment::Begin),
         }
     }
@@ -322,7 +345,7 @@ impl Spacer {
     }
 
     /// Set the size.
-    /// 
+    ///
     /// # Panics
     /// If `size` is negative
     pub fn with_size(mut self, size: (f32, f32)) -> Self {
@@ -332,7 +355,7 @@ impl Spacer {
     }
 
     /// Set the size.
-    /// 
+    ///
     /// # Panics
     /// If `size` is negative
     pub fn set_size(&mut self, size: (f32, f32)) {

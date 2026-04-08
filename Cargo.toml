@@ -1,7 +1,7 @@
 [package]
 name = "layuit"
 authors = ["Yrgh"]
-version = "0.3.0"
+version = "1.0.0"
 edition = "2024"
 description = "A UI layout library for Rust"
 license = "MIT"

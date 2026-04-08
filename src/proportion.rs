@@ -7,26 +7,78 @@
 //!
 //! [`Percent`] gives a child a percentage of the available space. It can be configured to extend
 //! the minimum size to ensure the percentage is always maintained.
-
+//!
+//! ## Strict vs non-strict [`Percent`]
+//!
+//! `Percent` features a field called `strict`. While normally disabled, when enabled, the minimum
+//! size of the `Percent` will grow to ensure that the child's minimum is exactly the percentage of
+//! the `Percent`'s minimum. When disabled, the minimum size will be the child's minimum size, and
+//! the `Percent` will not ensure the percentage is always maintained if it is too small.
+//!
+//! ```rust
+//! use layuit::{UiTree, Rect};
+//! use layuit::proportional::Percent;
+//! use layuit::padding::Spacer;
+//! use layuit::overlap::Overlap;
+//!
+//! // Both nodes hold a Spacer with a size of 10x10 and occupy the full space. Default alignment is
+//! // (Begin, Begin)
+//!
+//! let strict = Percent::new()
+//!     .with_child(Spacer::sized(0.0, 0.0, 10.0, 10.0), &mut tree)
+//!     .with_percent((0.5, 0.5))
+//!     .with_strict(true);
+//!
+//! let non_strict = Percent::new()
+//!     .with_child(Spacer::sized(0.0, 0.0, 10.0, 10.0), &mut tree)
+//!     .with_percent((0.5, 0.5))
+//!     .with_strict(false);
+//!
+//! // Both nodes will be shrunk, guaranteed.
+//! let mut stack = HStack::new()
+//!     .with_child(strict, &mut tree)
+//!     .with_child(non_strict, &mut tree);
+//!
+//! let mut tree = UiTre::new(stack);
+//!
+//! tree.calculate_layout(Rect::new(0.0, 0.0, 30.0, 20.0));
+//!
+//! // Final results:
+//!
+//! // Strict has a size of 20x20, since its minimum grew to ensure the percentage is always upheld.
+//!
+//! // Non_strict has a size of 10x10, since its minimum remained the same as the spacer, and the
+//! // percentage was not upheld.
+//! ```
 use thunderdome::Index as TdIndex;
 
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
+use crate::{Alignment, Anchor, NodeCache, Rect, UiNode, UiTree};
 
-/// Shrinks the horizontal or vertical dimensions of a child to maintain an aspect ratio.
+/// Expands the horizontal or vertical dimensions of a child to maintain an aspect ratio.
+///
+/// An anchor must be specified to determine where the child should be placed after the aspect ratio
+/// is applied.
 ///
 /// Once the child is added, it cannot be removed.
 pub struct AspectRatio {
     ratio: f32,
+
+    /// The position to place the shrunken space. The child is then aligned within the new space.
+    pub anchor: (Anchor, Anchor),
 
     align: (Alignment, Alignment),
     child: Option<TdIndex>,
 }
 
 impl AspectRatio {
-    /// Creates a new `AspectRatio` with no child, no alignment, and a 1:1 ratio.
+    /// Creates a new `AspectRatio` with no child, default anchoring, a 1:1 ratio, and ([`Begin`],
+    /// [`Begin`]) alignment.
+    ///
+    /// [`Begin`]: Alignment::Begin
     pub fn new() -> Self {
         Self {
             ratio: 1.0,
+            anchor: (Anchor::Center, Anchor::Center),
             align: (Alignment::Begin, Alignment::Begin),
             child: None,
         }
@@ -45,6 +97,12 @@ impl AspectRatio {
     /// Set the horizontal and vertical alignment.
     pub fn with_align(mut self, align: (Alignment, Alignment)) -> Self {
         self.align = align;
+        self
+    }
+
+    /// Set the horizontal and vertical anchor.
+    pub fn with_anchor(mut self, anchor: (Anchor, Anchor)) -> Self {
+        self.anchor = anchor;
         self
     }
 
@@ -70,6 +128,11 @@ impl AspectRatio {
     pub fn set_ratio(&mut self, ratio: f32) {
         assert!(ratio > 0.0);
         self.ratio = ratio;
+    }
+
+    /// Get the tree index of the child.
+    pub fn get_child(&self) -> Option<TdIndex> {
+        self.child
     }
 }
 
@@ -99,8 +162,10 @@ impl UiNode for AspectRatio {
 
             let child_ratio = child_min.0 / child_min.1;
             if child_ratio > self.ratio {
+                // Keep width, increase height
                 (child_min.0, child_min.0 / self.ratio)
             } else {
+                // Keep height, increase width
                 (child_min.1 * self.ratio, child_min.1)
             }
         } else {
@@ -119,15 +184,19 @@ impl UiNode for AspectRatio {
 
             let child_ratio = child_min.0 / child_min.1;
 
-            // If the child is wider than it should be, compress the width. If it is taller,
-            // compress the height
-            let size = if child_ratio > self.ratio {
-                (child_min.1 * self.ratio, child_min.1)
-            } else {
+            let (w, h) = if child_ratio > self.ratio {
+                // Keep width, increase height
                 (child_min.0, child_min.0 / self.ratio)
+            } else {
+                // Keep height, increase width
+                (child_min.1 * self.ratio, child_min.1)
             };
 
-            let space = cache.rect.align(self.align, size);
+            let w = w.max(child_min.0);
+            let h = h.max(child_min.1);
+
+            let shrunk = cache.rect.anchor(self.anchor, (w, h));
+            let space = shrunk.align(self.align, child_min);
             vec![space]
         } else {
             vec![]
@@ -142,7 +211,7 @@ impl UiNode for AspectRatio {
 /// Divides the space between two children horizontally, giving the left child a proportion of the
 /// space.
 ///
-/// Both nodes recieve their minimum size. If a child would not recieve its minimum size, the
+/// Both nodes receive their minimum size. If a child would not receive its minimum size, the
 /// percentage is bypassed.
 pub struct HSplit {
     /// The space between the two children.
@@ -151,7 +220,8 @@ pub struct HSplit {
     percent: f32,
 
     align: (Alignment, Alignment),
-    children: Option<(TdIndex, TdIndex)>,
+    left: Option<TdIndex>,
+    right: Option<TdIndex>,
 }
 
 impl HSplit {
@@ -164,7 +234,8 @@ impl HSplit {
             spacing: 0.0,
             percent: 0.5,
             align: (Alignment::Begin, Alignment::Begin),
-            children: None,
+            left: None,
+            right: None,
         }
     }
 
@@ -178,8 +249,24 @@ impl HSplit {
         right: impl UiNode,
         tree: &mut UiTree,
     ) -> Self {
-        assert!(self.children.is_none());
-        self.children = Some((tree.add_node(left), tree.add_node(right)));
+        assert!(self.left.is_none() && self.right.is_none());
+        self.left = Some(tree.add_node(left));
+        self.right = Some(tree.add_node(right));
+        self
+    }
+
+    /// Creates and binds a child node to the left slot, or the right, if the left is occupied.
+    ///
+    /// # Panics
+    /// If both left and right are set.
+    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+        if self.left.is_none() {
+            self.left = Some(tree.add_node(child));
+        } else if self.right.is_none() {
+            self.right = Some(tree.add_node(child));
+        } else {
+            panic!("Cannot add child when both children are bound");
+        }
         self
     }
 
@@ -218,6 +305,22 @@ impl HSplit {
         assert!(matches!(percent, 0.0..=1.0));
         self.percent = percent;
     }
+
+    /// Get the index of the left child
+    ///
+    /// # Panics
+    /// If the left slot is not set
+    pub fn get_left_index(&self) -> TdIndex {
+        self.left.expect("Left slot not set")
+    }
+
+    /// Get the index of the right child
+    ///
+    /// # Panics
+    /// If the right slot is not set
+    pub fn get_right_index(&self) -> TdIndex {
+        self.right.expect("Right slot not set")
+    }
 }
 
 impl Default for HSplit {
@@ -236,7 +339,7 @@ impl UiNode for HSplit {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some((left, right)) = self.children {
+        if let Some((left, right)) = self.left.zip(self.right) {
             let left_min = tree
                 .get_cache(left)
                 .expect("Left child not in cache")
@@ -255,7 +358,7 @@ impl UiNode for HSplit {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some((left, right)) = self.children {
+        if let Some((left, right)) = self.left.zip(self.right) {
             let left_min = tree
                 .get_cache(left)
                 .expect("Left child not in cache")
@@ -312,7 +415,7 @@ impl UiNode for HSplit {
     }
 
     fn get_children(&self) -> Vec<TdIndex> {
-        if let Some((left, right)) = self.children {
+        if let Some((left, right)) = self.left.zip(self.right) {
             vec![left, right]
         } else {
             vec![]
@@ -323,7 +426,7 @@ impl UiNode for HSplit {
 /// Divides the space between two children vertically, giving the top child a proportion of the
 /// space.
 ///
-/// Both nodes recieve their minimum size. If a child would not recieve its minimum size, the
+/// Both nodes receive their minimum size. If a child would not receive its minimum size, the
 /// percentage is bypassed.
 pub struct VSplit {
     /// The space between the two children.
@@ -332,7 +435,8 @@ pub struct VSplit {
     percent: f32,
 
     align: (Alignment, Alignment),
-    children: Option<(TdIndex, TdIndex)>,
+    top: Option<TdIndex>,
+    bot: Option<TdIndex>,
 }
 
 impl VSplit {
@@ -345,7 +449,8 @@ impl VSplit {
             spacing: 0.0,
             percent: 0.5,
             align: (Alignment::Begin, Alignment::Begin),
-            children: None,
+            top: None,
+            bot: None,
         }
     }
 
@@ -355,12 +460,28 @@ impl VSplit {
     /// If there are already child nodes.
     pub fn with_children(
         mut self,
-        left: impl UiNode,
-        right: impl UiNode,
+        top: impl UiNode,
+        bottom: impl UiNode,
         tree: &mut UiTree,
     ) -> Self {
-        assert!(self.children.is_none());
-        self.children = Some((tree.add_node(left), tree.add_node(right)));
+        assert!(self.top.is_none() && self.bot.is_none());
+        self.top = Some(tree.add_node(top));
+        self.bot = Some(tree.add_node(bottom));
+        self
+    }
+
+    /// Creates and binds a child node to the top slot, or the bottom, if the top is occupied.
+    ///
+    /// # Panics
+    /// If both left and right are set.
+    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+        if self.top.is_none() {
+            self.top = Some(tree.add_node(child));
+        } else if self.bot.is_none() {
+            self.bot = Some(tree.add_node(child));
+        } else {
+            panic!("Cannot add child when both children are bound");
+        }
         self
     }
 
@@ -399,6 +520,22 @@ impl VSplit {
         assert!(matches!(percent, 0.0..=1.0));
         self.percent = percent;
     }
+
+    /// Returns the tree index of the top node.
+    ///
+    /// # Panics
+    /// If the top node is not set.
+    pub fn get_top_index(&self) -> TdIndex {
+        self.top.expect("Top slot not set")
+    }
+
+    /// Returns the tree index of the bottom node.
+    ///
+    /// # Panics
+    /// If the top node is not set.
+    pub fn get_bottom_index(&self) -> TdIndex {
+        self.bot.expect("Bottom slot not set")
+    }
 }
 
 impl Default for VSplit {
@@ -417,7 +554,7 @@ impl UiNode for VSplit {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some((top, bot)) = self.children {
+        if let Some((top, bot)) = self.top.zip(self.bot) {
             let top_min = tree
                 .get_cache(top)
                 .expect("Top child not in cache")
@@ -436,7 +573,7 @@ impl UiNode for VSplit {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some((top, bot)) = self.children {
+        if let Some((top, bot)) = self.top.zip(self.bot) {
             let top_min = tree
                 .get_cache(top)
                 .expect("Top child not in cache")
@@ -485,7 +622,7 @@ impl UiNode for VSplit {
     }
 
     fn get_children(&self) -> Vec<TdIndex> {
-        if let Some((top, bot)) = self.children {
+        if let Some((top, bot)) = self.top.zip(self.bot) {
             vec![top, bot]
         } else {
             vec![]
@@ -504,20 +641,22 @@ pub struct Percent {
     /// If `true`, the minimum size grows to ensure the percentage is always maintained.
     pub strict: bool,
     percent: (f32, f32),
+    pub anchor: (Anchor, Anchor),
 
     align: (Alignment, Alignment),
     child: Option<TdIndex>,
 }
 
 impl Percent {
-    /// Creates a new `Percent` with no child, no alignment, a (100%, 100%) percent, `strict`
-    /// disabled, and ([`Begin`], [`Begin`]) alignment.
+    /// Creates a new `Percent` with no child, no alignment, default anchoring, a (100%, 100%)
+    /// percent, `strict` disabled, and ([`Begin`], [`Begin`]) alignment.
     ///
     /// [`Begin`]: Alignment::Begin
     pub fn new() -> Self {
         Self {
             strict: false,
             percent: (1.0, 1.0),
+            anchor: (Anchor::Begin, Anchor::Begin),
             align: (Alignment::Begin, Alignment::Begin),
             child: None,
         }
@@ -539,6 +678,12 @@ impl Percent {
         self
     }
 
+    /// Set the horizontal and vertical anchor.
+    pub fn with_anchor(mut self, anchor: (Anchor, Anchor)) -> Self {
+        self.anchor = anchor;
+        self
+    }
+
     /// Set the percentage of space to give to the first child
     ///
     /// # Panics
@@ -547,7 +692,7 @@ impl Percent {
         assert!(matches!(percent, (0.0..=1.0, 0.0..=1.0)));
         if self.strict {
             assert!(
-                self.percent.0 > 0.0 && self.percent.1 > 0.0,
+                percent.0 > 0.0 && percent.1 > 0.0,
                 "Percent must be greater than 0 when strict is enabled"
             );
         }
@@ -578,7 +723,7 @@ impl Percent {
         assert!(matches!(percent, (0.0..=1.0, 0.0..=1.0)));
         if self.strict {
             assert!(
-                self.percent.0 > 0.0 && self.percent.1 > 0.0,
+                percent.0 > 0.0 && percent.1 > 0.0,
                 "Percent must be greater than 0 when strict is enabled"
             );
         }
@@ -602,6 +747,11 @@ impl Percent {
     /// Get the percentage of space to give to the first child
     pub fn get_percent(&self) -> (f32, f32) {
         self.percent
+    }
+
+    /// Get the tree index of the child.
+    pub fn get_child(&self) -> Option<TdIndex> {
+        self.child
     }
 }
 
@@ -640,7 +790,9 @@ impl UiNode for Percent {
             // Child gets enough space but can get up to the percent.
             let w = child_min.0.max(cache.rect.w * self.percent.0);
             let h = child_min.1.max(cache.rect.h * self.percent.1);
-            let space = cache.rect.align(self.align, (w, h));
+
+            let shrunk = cache.rect.anchor(self.anchor, (w, h));
+            let space = shrunk.align(self.align, child_min);
             vec![space]
         } else {
             vec![]

@@ -6,9 +6,6 @@ A renderer-agnostic UI layout system. Layuit handles computing the size and posi
 Layuit provides several organizational nodes such as [`HStack`] and [`Margin`], but allows users
 to create their own nodes.
 
-Layuit uses the [`thunderdome`] crate for the tree structure. To access nodes from a tree, use
-[`thunderdome::Index`].
-
 ## Core concepts
 
 - **[`UiTree`]**: Owns the [`UiNode`]s and layout information in an arena and handles
@@ -19,7 +16,6 @@ Layuit uses the [`thunderdome`] crate for the tree structure. To access nodes fr
   [`UiTree::calculate_layout`].
 - **[`Rect`]**: A rectangle in space, represented with `f32` coordinates.
 - **[`Alignment`]**: An alignment primarily used for determining node placement.
-- **[`NodeVisitor`]**: A trait implemented e.g. by renderers to process and/or manipulate nodes.
 
 ## Layout process
 
@@ -34,101 +30,6 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
    [`Rect`] to do the same for its children. The [`NodeCache::rect`] field is populated with
    the resulting [`Rect`]s.
 
-## Caveats
-
-**The cache is stale before [`UiTree::calculate_layout`] is called**, and becomes stale if
-children are added, removed, moved, or otherwise changed. The cache always produces valid
-results, but they may be out of date or set to 0.
-
-**Minimum size is a practice, not a requirement**. When implementing custom nodes, be wary of
-ensuring each node's minimum size is enforced. This can easily become a problem if the space
-required by the entire tree is smaller than the one provided to [`UiTree::calculate_layout`].
-
-## Implementing custom nodes
-
-Custom nodes are essential to using Layuit. Without them, no meaningful UI can be rendered.
-However, it is important to ensure you follow the rules:
-
-1. **Children must be accurately reported.** Failure to report children will result in them not
-   being updated during [`UiTree::calculate_layout`] or removed during [`UiTree::remove_node`].
-
-2. **Minimum size must be correctly calculated.** Under-representing the minimum size can and
-   often will result in nodes overflowing into each other.
-
-3. **Rectangles must be properly assigned.** Similar to #2, it is the responsibility of the
-   *parent* node to ensure that each node get both enough space and not too much. Failing to do
-   so will result in nodes overlapping.
-
-One common custom node is the `Label`:
-
-```rust
-use layuit::{Alignment, NodeCache, Rect, UiTree, UiNode};
-
-pub struct Label {
-    text: String,
-    align: (Alignment, Alignment),
-    cached_size: (f32, f32),
-}
-
-/* Label methods and constructors... */
-
-impl UiNode for Label {
-    fn get_align(&self) -> (Alignment, Alignment) { self.align }
-    fn get_align_mut(&mut self) -> (&mut Alignment, &mut Alignment) {
-        (&mut self.align.0, &mut self.align.1)
-    }
-
-    fn calculate_min_size(&mut self, _tree: &UiTree, _cache: &mut NodeCache) -> (f32, f32) {
-        self.cached_size
-    }
-
-    // calculate_rects and get_children are omitted for leaf nodes
-}
-```
-
-## Creating a tree
-
-Every tree needs a root node, which cannot be removed. Good choices are [`Overlap`] and either
-[`HStack`] or [`VStack`]. A custom node can also be used.
-
-```rust
-use layuit::{UiTree, UiNode, NodeVisitor};
-use layuit::stacks::HStack;
-
-// The root node can be any UiNode, but must be specified.
-let mut tree = UiTree::new(HStack::new().with_spacing(4.0));
-
-// Create a label wrapped in a 4px margin
-let padded_label = Margin::new()
-    .with_margins(4.0, 4.0, 4.0, 4.0)
-    .with_child(Label::new("Hello, world!"), &mut tree);
-
-// Add the label to the root stack
-tree.get_root_mut()
-    .downcast_mut::<HStack>()
-    .unwrap()
-    .with_child(padded_label, &mut tree);
-
-tree.calculate_layout(Rect::new(0.0, 0.0, 640.0, 480.0));
-
-// Render the UI tree
-
-struct Renderer {
-    // ...
-}
-
-impl NodeVisitor for Renderer {
-    fn visit(&mut self, node: &mut dyn UiNode, rect: layuit::Rect) {
-        if let Some(label) = node.downcast_mut::<Label>() {
-            // ...
-        }
-    }
-}
-
-let mut renderer = /* ... */;
-tree.visit(&mut renderer);
-```
-
 ## Provided nodes
 
 - [`HStack`] - Horizontal arrangement
@@ -139,6 +40,9 @@ tree.visit(&mut renderer);
 - [`Spacer`] - A leaf node with configurable empty space
 - [`Clip`] - Allows a child to outgrow the node with the assumption that the renderer will
   clip it, and enables a scroll offset to be applied if the child is larger.
+- [`Hider`] - Allows a child's visibility to be controlled. An invisible node has no minimum
+  size and should not be attempted to be rendered.
+- [`Selector`] - Selects a single child node to be visible at a time.
 - [`AspectRatio`] - Maintains a horizontal:vertical ratio
 - [`HSplit`] - Horizontal split between two children
 - [`VSplit`] - Vertical split between two children
@@ -146,6 +50,12 @@ tree.visit(&mut renderer);
 - [`HEqual`] - Horizontal arrangement with each child getting equal space
 - [`VEqual`] - Vertical arrangement with each child getting equal space
 - [`Grid`] - 2D grid of children
+- [`Clamp`] - Constrains a child to a maximum size.
+
+## External dependencies
+
+- [`thunderdome`] - Used publicly to provide indexing into [`UiTree`]s.
+- [`indexmap`] - Used privately to provide a stable ordering of children in multi-child nodes.
 
 [`Rect`]: https://docs.rs/layuit/latest/layuit/struct.Rect.html
 [`Alignment`]: https://docs.rs/layuit/latest/layuit/enum.Alignment.html
@@ -164,6 +74,8 @@ tree.visit(&mut renderer);
 [`Minimum`]: https://docs.rs/layuit/latest/layuit/padding/struct.Minimum.html
 [`Spacer`]: https://docs.rs/layuit/latest/layuit/padding/struct.Spacer.html
 [`Clip`]: https://docs.rs/layuit/latest/layuit/clip/struct.Clip.html
+[`Hider`]: https://docs.rs/layuit/latest/layuit/visibility/struct.Hider.html
+[`Selector`]: https://docs.rs/layuit/latest/layuit/visibility/struct.Selector.html
 [`AspectRatio`]: https://docs.rs/layuit/latest/layuit/proportional/struct.AspectRatio.html
 [`HSplit`]: https://docs.rs/layuit/latest/layuit/proportional/struct.HSplit.html
 [`VSplit`]: https://docs.rs/layuit/latest/layuit/proportional/struct.VSplit.html
@@ -171,6 +83,7 @@ tree.visit(&mut renderer);
 [`HEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.HEqual.html
 [`VEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.VEqual.html
 [`Grid`]: https://docs.rs/layuit/latest/layuit/grid/struct.Grid.html
+[`Clamp`]: https://docs.rs/layuit/latest/layuit/limit/struct.Clamp.html
 
 [`thunderdome`]: https://crates.io/crates/thunderdome
-[`thunderdome::Index`]: https://docs.rs/thunderdome/latest/thunderdome/struct.Index.html
+[`indexmap`]: https://crates.io/crates/indexmap

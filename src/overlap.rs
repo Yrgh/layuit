@@ -25,7 +25,7 @@ impl Overlap {
         }
     }
 
-    /// Add a new child to the stack.
+    /// Add a new child to the list.
     ///
     /// See [`add_child`].
     ///
@@ -41,25 +41,25 @@ impl Overlap {
         self
     }
 
-    /// Add a child to the stack. The child will appear on top (last-visited).
+    /// Add a child to the list. The child will appear on top (last-visited).
     pub fn add_child(&mut self, child: impl UiNode, tree: &mut UiTree) {
         let index = tree.add_node(child);
         self.children.insert(index);
     }
 
-    /// Returns the number of children in the stack.
+    /// Returns the number of children in the list.
     pub fn len(&self) -> usize {
         self.children.len()
     }
 
-    /// Returns `true` if the stack is empty.
+    /// Returns `true` if the list is empty.
     ///
     /// Equivalent to `len() == 0`.
     pub fn is_empty(&self) -> bool {
         self.children.is_empty()
     }
 
-    /// Remove a child from the stack.
+    /// Remove a child from the list.
     ///
     /// Returns `true` if the child was removed.
     pub fn remove_child(&mut self, index: usize, tree: &mut UiTree) -> bool {
@@ -81,6 +81,11 @@ impl Overlap {
     pub fn set_child_position(&mut self, index: usize, position: usize) -> bool {
         self.children.move_index(index, position);
         true
+    }
+
+    /// Returns the tree index associated with a child at a given list index.
+    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+        self.children.get_index(index).copied()
     }
 }
 
@@ -113,7 +118,6 @@ impl UiNode for Overlap {
             h = h.max(ch);
         }
 
-        // Remove the extra spacing at the end
         (w, h)
     }
 

@@ -6,9 +6,6 @@
 //! Layuit provides several organizational nodes such as [`HStack`] and [`Margin`], but allows users
 //! to create their own nodes.
 //!
-//! Layuit uses the [`thunderdome`] crate for the tree structure. To access nodes from a tree, use
-//! [`thunderdome::Index`].
-//!
 //! ## Core concepts
 //!
 //! - **[`UiTree`]**: Owns the [`UiNode`]s and layout information in an arena and handles
@@ -19,7 +16,6 @@
 //!   [`UiTree::calculate_layout`].
 //! - **[`Rect`]**: A rectangle in space, represented with `f32` coordinates.
 //! - **[`Alignment`]**: An alignment primarily used for determining node placement.
-//! - **[`NodeVisitor`]**: A trait implemented e.g. by renderers to process and/or manipulate nodes.
 //!
 //! ## Layout process
 //!
@@ -33,6 +29,18 @@
 //!    its immediate children through [`calculate_rects`]. Each child then uses its restricted
 //!    [`Rect`] to do the same for its children. The [`NodeCache::rect`] field is populated with
 //!    the resulting [`Rect`]s.
+//!
+//! The majority of the layout process can be thought of as drawing boxes on a sheet of paper. Boxes
+//! cannot normally cross, but are allowed to touch. Several nodes change that behavior:
+//!
+//! - [`Overlap`] intentionally allows the boxes of children to overlap each other, as long as they
+//!   stay inside.
+//!
+//! - [`Clip`] allows a box to be bigger than that of its parent, but requires the box's viewable
+//!   area to be constrained to that of the `Clip` by the renderer.
+//!
+//! - [`Hider`] allows a child to be completely excluded from the layout process, but requires the
+//!   renderer to ignore it.
 //!
 //! ## Caveats
 //!
@@ -59,7 +67,7 @@
 //!    *parent* node to ensure that each node get both enough space and not too much. Failing to do
 //!    so will result in nodes overlapping.
 //!
-//! One common custom node is the `Label`:
+//! Probably the most important custom node is the `Label`:
 //!
 //! ```rust
 //! use layuit::{Alignment, NodeCache, Rect, UiTree, UiNode};
@@ -78,7 +86,7 @@
 //!         (&mut self.align.0, &mut self.align.1)
 //!     }
 //!
-//!     fn calculate_min_size(&mut self, _tree: &UiTree, _cache: &mut NodeCache) -> (f32, f32) {
+//!     fn calculate_min_size(&self, _tree: &UiTree) -> (f32, f32) {
 //!         self.cached_size
 //!     }
 //!
@@ -86,21 +94,65 @@
 //! }
 //! ```
 //!
-//! ## Creating a tree
+//! However, you are not restricted to just leaf nodes. You can create containers.
 //!
-//! Every tree needs a root node, which cannot be removed. Good choices are [`Overlap`] and either
-//! [`HStack`] or [`VStack`]. A custom node can also be used.
+//! ## Using the `ui!` macro
+//!
+//! The [`ui!`] macro is a convenience for creating trees with a simple syntax, avoiding rewriting
+//! `.with_align((...))` and `.with_child(...)` in every node, for every child. It does come with
+//! the limitation that you cannot create your entire tree this way; your root node must be created
+//! manually.
+//!
+//! There is a second limitation with nodes that have a fixed number of children greater than one,
+//! such as [`HSplit`], as these nodes have [`with_children`] instead of `with_child`, which the
+//! macro is not designed for. You can still use these nodes in the macro, but you cannot use
+//! `=> [ ... ]` with them or their children.
+//!
+//! [`with_children`]: proportion::HSplit::with_children
 //!
 //! ```rust
-//! use layuit::{UiTree, UiNode, NodeVisitor};
+//! /// use layuit::UiTree;
+//! use layuit::padding::{Spacer, Minimum};
+//! use layuit::stacks::HStack;
+//! use layuit::proportion::HSplit;
+//! use layuit::overlap::Overlap;
+//!
+//! let mut tree = UiTree::new(Overlap::new());
+//! let node = layuit::ui!(
+//!     ++ HStack::new() => [
+//!         -< Spacer::sized((10.0, 10.0)),
+//!         -- Minimum::new().with_min((20.0, 20.0)) => [
+//!             -- Spacer::sized((10.0, 10.0))
+//!         ],
+//!         -> Spacer::sized((10.0, 10.0))
+//!     ]
+//! );
+//!
+//! tree.get_root_mut().downcast_mut::<Overlap>().unwrap().add_child(node, &mut tree);
+//!
+//! // Overlap (N/A, N/A)
+//! // └─ HStack (Full, Full)
+//! //    ├─ Spacer (N/A, Begin)
+//! //    ├─ Minimum (N/A, Center)
+//! //    │  └─ Spacer (Center, Center)
+//! //    └─ Spacer (N/A, End)
+//! ```
+//!
+//! ## Creating a tree manually
+//!
+//! Alternatively, you can create the entire tree manually. It is more verbose, but necessary for
+//! creating dynamic components, as the macro does not allow you to retrieve the node indices.
+//!
+//! ```rust
+//! use layuit::{UiTree, UiNode};
 //! use layuit::stacks::HStack;
 //!
 //! // The root node can be any UiNode, but must be specified.
 //! let mut tree = UiTree::new(HStack::new().with_spacing(4.0));
 //!
-//! // Create a label wrapped in a 4px margin
+//! // Create a label from the example above, wrapped in a 4px margin
 //! let padded_label = Margin::new()
-//!     .with_margins(4.0, 4.0, 4.0, 4.0)
+//!     .with_equal(4.0)
 //!     .with_child(Label::new("Hello, world!"), &mut tree);
 //!
 //! // Add the label to the root stack
@@ -122,13 +174,17 @@
 //! - [`Spacer`] - A leaf node with configurable empty space
 //! - [`Clip`] - Allows a child to outgrow the node with the assumption that the renderer will
 //!   clip it, and enables a scroll offset to be applied if the child is larger.
-//! - [`AspectRatio`] - Maintains a horizontal:vertical ratio
-//! - [`HSplit`] - Horizontal split between two children
-//! - [`VSplit`] - Vertical split between two children
-//! - [`Percent`] - Maintains a percentage of space for a child
-//! - [`HEqual`] - Horizontal arrangement with each child getting equal space
-//! - [`VEqual`] - Vertical arrangement with each child getting equal space
-//! - [`Grid`] - 2D grid of children
+//! - [`Hider`] - Allows a child's visibility to be controlled. An invisible node has no minimum
+//!   size and should not be attempted to be rendered.
+//! - [`Selector`] - Selects a single child node to be visible at a time.
+//! - [`AspectRatio`] - Maintains a horizontal:vertical ratio.
+//! - [`HSplit`] - Horizontal split between two children.
+//! - [`VSplit`] - Vertical split between two children.
+//! - [`Percent`] - Maintains a percentage of space for a child.
+//! - [`HEqual`] - Horizontal arrangement with each child getting equal space.
+//! - [`VEqual`] - Vertical arrangement with each child getting equal space.
+//! - [`Grid`] - 2D grid of children.
+//! - [`Clamp`] - Constrains a child to a maximum size.
 //!
 //! [`calculate_min_size`]: UiNode::calculate_min_size
 //! [`calculate_rects`]: UiNode::calculate_rects
@@ -137,7 +193,10 @@
 //! [`Overlap`]: overlap::Overlap
 //! [`Margin`]: padding::Margin
 //! [`Minimum`]: padding::Minimum
+//! [`Spacer`]: padding::Spacer
 //! [`Clip`]: clip::Clip
+//! [`Hider`]: visibility::Hider
+//! [`Selector`]: visibility::Selector
 //! [`AspectRatio`]: proportion::AspectRatio
 //! [`HSplit`]: proportion::HSplit
 //! [`VSplit`]: proportion::VSplit
@@ -145,9 +204,7 @@
 //! [`HEqual`]: grid::HEqual
 //! [`VEqual`]: grid::VEqual
 //! [`Grid`]: grid::Grid
-//!
-//! [`thunderdome`]: https://crates.io/crates/thunderdome
-//! [`thunderdome::Index`]: https://docs.rs/thunderdome/latest/thunderdome/struct.Index.html
+//! [`Clamp`]: limit::Clamp
 
 #![warn(clippy::all)]
 #![deny(clippy::unwrap_used)]
@@ -158,21 +215,39 @@ use thunderdome::{Arena, Index as TdIndex};
 
 pub mod clip;
 pub mod grid;
+pub mod limit;
 pub mod overlap;
 pub mod padding;
+pub mod prelude;
 pub mod proportion;
 pub mod stacks;
+pub mod visibility;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 /// An alignment of any sort, for example determining node placement.
 ///
-/// Begin refers to the left or top. End refers to the right or bottom.
+/// `Begin`, `Center`, and `End` cause a node to shrink to its minimum size in to that position.
+/// `Full` causes a node to occupy all space it is given. For example, to shrink to the left-middle,
+/// use (`Begin`, `Center`). To fill horizontally and shrink down, use (`Full`, `End`).
 pub enum Alignment {
     #[default]
+    /// The left or top.
     Begin,
     Center,
     End,
     Full,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+/// Horizontal or vertical anchoring. While very similar to [`Alignment`], `Anchor` represents
+/// shrinking only, and has no `Full` variant.
+///
+/// It is also noteworthy that the default is `Center`, not `Alignment::Begin`.
+pub enum Anchor {
+    Begin,
+    #[default]
+    Center,
+    End,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
@@ -287,6 +362,34 @@ impl Rect {
             Alignment::Full => self,
         }
     }
+
+    /// Similar to [`align`], but based on [`Anchor`] instead of [`Alignment`].
+    ///
+    /// [`align`]: Self::align
+    pub fn anchor(mut self, anchor: (Anchor, Anchor), size: (f32, f32)) -> Self {
+        self = match anchor.0 {
+            Anchor::Begin => self.shrink_begin_x(self.w - size.0),
+            Anchor::Center => self.shrink_center_x(self.w - size.0),
+            Anchor::End => self.shrink_end_x(self.w - size.0),
+        };
+
+        match anchor.1 {
+            Anchor::Begin => self.shrink_begin_y(self.h - size.1),
+            Anchor::Center => self.shrink_center_y(self.h - size.1),
+            Anchor::End => self.shrink_end_y(self.h - size.1),
+        }
+    }
+
+    /// Returns the area included by both `self` and `other`.
+    pub fn intersect(self, other: Self) -> Self {
+        let x1 = self.x.max(other.x);
+        let y1 = self.y.max(other.y);
+
+        let x2 = (self.x + self.w).min(other.x + other.w);
+        let y2 = (self.y + self.h).min(other.y + other.h);
+
+        Self::new(x1, y1, (x2 - x1).max(0.0), (y2 - y1).max(0.0))
+    }
 }
 
 /// Basic functionality for a UI node.
@@ -297,13 +400,24 @@ pub trait UiNode: std::any::Any {
     fn get_align_mut(&mut self) -> (&mut Alignment, &mut Alignment);
 
     /// Calculate the minimum size of the node.
+    ///
+    /// It is the parent's responsibility to ensure the minimum size of all children is met.
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32);
 
-    /// Recalculate the position and size of child nodes, in the same order as [`get_children`].
+    /// Recalculate the position and size of child nodes, in the same order and count as
+    /// [`get_visible_children`].
+    ///
+    /// Parents control the space allocated to their children. It is not the child's responsibility
+    /// to manage its own rects. The parent **must** apply the correct alignment to all children,
+    /// no matter what kind of container they are.
+    ///
+    /// A good mental model is to draw boxes on a piece of paper. Each node is a box. A box must be
+    /// entirely contained within another. With exceptions, no line can cross through any other.
+    /// They may touch and run parallel, but not cross.
     ///
     /// This is optional, and should only be implemented if the node has a child/children.
     ///
-    /// [`get_children`]: Self::get_children
+    /// [`get_visible_children`]: Self::get_visible_children
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
         let _ = (cache, tree);
         vec![]
@@ -312,6 +426,18 @@ pub trait UiNode: std::any::Any {
     /// Get all children of the node, if applicable.
     fn get_children(&self) -> Vec<TdIndex> {
         vec![]
+    }
+
+    /// Get all **visible** children of the node, if applicable.
+    ///
+    /// If a node has children, but does not control visibility, this defaults to the result of
+    /// [`get_children`].
+    ///
+    /// This does not have to have the same order as [`get_children`], but it must be a subset.
+    ///
+    /// [`get_children`]: Self::get_children
+    fn get_visible_children(&self) -> Vec<TdIndex> {
+        self.get_children()
     }
 }
 
@@ -329,6 +455,15 @@ impl dyn UiNode {
     pub fn downcast_mut<T: UiNode>(&mut self) -> Option<&mut T> {
         (self as &mut dyn std::any::Any).downcast_mut()
     }
+}
+
+/// A walker for a UI tree.
+pub trait UiWalker {
+    /// Called when a node is visited, before its children.
+    fn enter(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
+
+    /// Called after all children of a node have been visited, including if it has no children.
+    fn leave(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -414,21 +549,28 @@ impl UiTree {
     /// small, `false` is returned, but the cache will be updated with potentially incorrect
     /// results.
     ///
+    /// Nodes that are not visible will be given a minimum size of `(0, 0)`.
+    ///
     /// # Panics
     /// If the tree is malformed
     pub fn calculate_layout(&mut self, root_rect: Rect) -> bool {
+        // Clear cache
+        for v in self.cache.values_mut() {
+            *v = Default::default();
+        }
+
         // Queue to visit now
         let mut visit_stack = vec![self.root];
         // Queue to visit later
         let mut min_stack = Vec::new();
         while let Some(v) = visit_stack.pop() {
             min_stack.push(v);
-            visit_stack.extend(self.arena[v].get_children());
+            visit_stack.extend(self.arena[v].get_visible_children());
         }
 
         for v in min_stack.iter().rev() {
             let min = self.arena[*v].calculate_min_size(self);
-            self.cache.entry(*v).and_modify(|e| e.min_size = min);
+            self.cache.entry(*v).or_default().min_size = min;
         }
 
         let is_good = root_rect.w >= self.cache[&self.root].min_size.0
@@ -441,10 +583,245 @@ impl UiTree {
         for v in min_stack {
             let rects = self.arena[v].calculate_rects(&self.cache[&v], self);
             for (child, rect) in self.arena[v].get_children().iter().zip(rects) {
-                self.cache.entry(*child).and_modify(|e| e.rect = rect);
+                self.cache.entry(*child).or_default().rect = rect;
             }
         }
 
         is_good
     }
+
+    /// Walks the entire tree, starting from the root, with the given walker. See [`walk_node`].
+    ///
+    /// If `use_visible` is `true`, only nodes that are visible will be visited.
+    ///
+    /// [`walk_node`]: Self::walk_node
+    pub fn walk_root(&mut self, walker: &mut impl UiWalker, use_visible: bool) {
+        self.walk_node(self.root, walker, use_visible);
+    }
+
+    /// Walks a single node and its children, with the given walker.
+    ///
+    /// First, the walker receives [`enter`] with the node and its cached rect and index. Then, any
+    /// and all children are walked in the order returned by [`UiNode::get_children`]. Finally, the
+    /// walker receives [`leave`].
+    ///
+    /// Parents are always visited before their children. Children are always visited before their
+    /// siblings.
+    ///
+    /// *Every* call to [`enter`] **will** be matched with a call to [`leave`].
+    ///
+    /// If `use_visible` is `true`, only nodes that are visible will be visited.
+    ///
+    /// [`enter`]: UiWalker::enter
+    /// [`leave`]: UiWalker::leave
+    pub fn walk_node(&mut self, index: TdIndex, walker: &mut impl UiWalker, use_visible: bool) {
+        let rect = self.cache[&index].rect;
+        walker.enter(self.arena[index].as_mut(), rect, index);
+
+        let children = if use_visible {
+            self.arena[index].get_visible_children()
+        } else {
+            self.arena[index].get_children()
+        };
+        for child in children {
+            self.walk_node(child, walker, use_visible);
+        }
+
+        walker.leave(self.arena[index].as_mut(), rect, index);
+    }
+}
+
+#[macro_export]
+/// A macro for making the process of creating a UI subtree easier.
+///
+/// The macro takes a mutable reference to a [`UiTree`] and a description for a UI node. The
+/// description should begin with two alignment characters, an expression that creates the UI node,
+/// and optionally a list of children.
+///
+/// For the alignment characters, `<` maps to [`Begin`], `-` maps to [`Center`], `>` maps to
+/// [`End`], and `+` maps to [`Full`].
+///
+/// ## Example usage
+/// ```rust
+/// use layuit::UiTree;
+/// use layuit::padding::{Spacer, Minimum};
+/// use layuit::stacks::HStack;
+/// use layuit::overlap::Overlap;
+///
+/// let mut tree = UiTree::new(Overlap::new());
+/// let node = layuit::ui!(
+///     ++ HStack::new() => [
+///         -< Spacer::sized((10.0, 10.0)),
+///         -- Minimum::new().with_min((20.0, 20.0)) => [
+///             -- Spacer::sized((10.0, 10.0))
+///         ],
+///         -> Spacer::sized((10.0, 10.0))
+///     ]
+/// );
+///
+/// tree.get_root_mut().downcast_mut::<Overlap>().unwrap().add_child(node, &mut tree);
+///
+/// // Overlap (N/A, N/A)
+/// // └─ HStack (Full, Full)
+/// //    ├─ Spacer (N/A, Begin)
+/// //    ├─ Minimum (N/A, Center)
+/// //    │  └─ Spacer (Center, Center)
+/// //    └─ Spacer (N/A, End)
+/// ```
+///
+/// [`Begin`]: crate::Alignment::Begin
+/// [`Center`]: crate::Alignment::Center
+/// [`End`]: crate::Alignment::End
+/// [`Full`]: crate::Alignment::Full
+macro_rules! ui {
+    ($tree:expr, $($node:tt)*) => {
+        ui!(@node $tree;; $($node)*)
+    };
+
+    // No children
+    (@node $tree:expr;; $ha:tt $va: tt $node:expr) => {
+        $node.with_align((ui!(@align $ha), ui!(@align $va)))
+    };
+
+    (@node $tree:expr;; $ha:tt $va: tt $node:expr => [ $($child:tt)* ]) => {
+        ui!(@child $tree;; $node.with_align((ui!(@align $ha), ui!(@align $va))) => [ $($child)* ])
+    };
+
+    (@child $tree:expr;; $node:expr => [ ]) => {
+        $node
+    };
+
+    (
+        @child
+        $tree:expr;;
+        $node:expr
+        => [
+            $ha:tt
+            $va: tt
+            $child:expr
+            => [ $($grand:tt)* ], $($rest:tt)*
+        ]
+    ) => {
+        ui!(
+            @child
+            $tree;;
+            $node.with_child(
+                ui!(
+                    @node
+                    $tree;;
+                    $ha
+                    $va
+                    $child
+                    => [ $($grand)* ]
+                ),
+                $tree
+            )
+            => [ $($rest)* ]
+        )
+    };
+
+    (
+        @child
+        $tree:expr;;
+        $node:expr
+        => [
+            $ha:tt
+            $va: tt
+            $child:expr
+            => [ $($grand:tt)* ]
+            ]
+    ) => {
+        ui!(
+            @child
+            $tree;;
+            $node.with_child(
+                ui!(
+                    @node
+                    $tree;;
+                    $ha
+                    $va
+                    $child
+                    => [ $($grand)* ]
+                ),
+                $tree
+            )
+            => []
+        )
+    };
+
+    (@child
+        $tree:expr;;
+        $node:expr
+        => [
+            $ha:tt
+            $va: tt
+            $child:expr
+            , $($rest:tt)*
+        ]
+    ) => {
+        ui!(
+            @child
+            $tree;;
+            $node.with_child(
+                ui!(
+                    @node
+                    $tree;;
+                    $ha
+                    $va
+                    $child
+                    => [ ]
+                ),
+                $tree
+            )
+            => [ $($rest)* ]
+        )
+    };
+
+    (
+        @child
+        $tree:expr;;
+        $node:expr
+        => [
+            $ha:tt
+            $va: tt
+            $child:expr
+        ]
+    ) => {
+        ui!(
+            @child
+            $tree;;
+            $node.with_child(
+                ui!(
+                    @node
+                    $tree;;
+                    $ha
+                    $va
+                    $child
+                    => [ ]
+                ),
+                $tree
+            )
+            => []
+        )
+    };
+
+    (@align <) => {
+        Alignment::Begin
+    };
+
+    (@align -) => {
+        Alignment::Center
+    };
+
+    (@align >) => {
+        Alignment::End
+    };
+
+    (@align +) => {
+        Alignment::Full
+    };
+
+    (@align $a:tt) => {
+        compile_error!("Invalid alignment. < - > + are allowed.")
+    };
 }

@@ -96,6 +96,11 @@ impl HEqual {
         self.children.move_index(index, position);
         true
     }
+
+    /// Returns the tree index associated with a child at a given list index.
+    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+        self.children.get_index(index).copied()
+    }
 }
 
 impl Default for HEqual {
@@ -162,7 +167,7 @@ impl UiNode for HEqual {
 /// and does not suffer from the [`Full`] alignment caveat.
 ///
 /// [`VStack`]: crate::stacks::VStack
-/// [`Full`]: crate::stacks::Alignment::Full
+/// [`Full`]: crate::Alignment::Full
 pub struct VEqual {
     align: (Alignment, Alignment),
     children: IndexSet<TdIndex>,
@@ -235,6 +240,11 @@ impl VEqual {
     pub fn set_child_position(&mut self, index: usize, position: usize) -> bool {
         self.children.move_index(index, position);
         true
+    }
+
+    /// Returns the tree index associated with a child at a given list index.
+    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+        self.children.get_index(index).copied()
     }
 }
 
@@ -372,6 +382,11 @@ impl Grid {
     pub fn set_child_position(&mut self, index: usize, position: usize) -> bool {
         self.children.move_index(index, position);
         true
+    }
+
+    /// Returns the tree index associated with a child at a given list index.
+    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+        self.children.get_index(index).copied()
     }
 }
 

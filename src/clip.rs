@@ -1,4 +1,4 @@
-//! Container nodes that reduce the size a child occupies.
+//! Container nodes that mark their children as visually bound to their parent.
 //!
 //! [`Clip`] allows a child to outgrow its parent, and enables an offset to be applied if the child
 //! does. This can be used to create a scrolling area, and is best used when wrapped in a
@@ -17,7 +17,8 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
 /// Allows a child to outgrow its parent and be clipped to the parent's bounds.
 ///
-/// `Clip` is unaffected by its child's minimum size.
+/// `Clip` is unaffected by its child's minimum size, and *always has a minimum size of zero*. For
+/// a deeper dive, see the [module-level documentation](self).
 ///
 /// In each axis, if the child is larger than the parent, it is affected by the offset but not
 /// alignment. If the child is smaller than the parent, it is affected by the alignment but not the
@@ -82,6 +83,11 @@ impl Clip {
     pub fn set_offset(&mut self, offset: (f32, f32)) {
         assert!(offset.0 >= 0.0 && offset.1 >= 0.0);
         self.offset = offset;
+    }
+
+    /// Get the tree index of the child.
+    pub fn get_child(&self) -> Option<TdIndex> {
+        self.child
     }
 }
 

@@ -118,6 +118,11 @@ impl HStack {
         self.children.move_index(index, position);
         true
     }
+
+    /// Returns the tree index associated with a child at a given stack index.
+    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+        self.children.get_index(index).copied()
+    }
 }
 
 impl Default for HStack {
@@ -278,6 +283,11 @@ impl VStack {
     pub fn set_child_position(&mut self, index: usize, position: usize) -> bool {
         self.children.move_index(index, position);
         true
+    }
+
+    /// Returns the tree index associated with a child at a given stack index.
+    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+        self.children.get_index(index).copied()
     }
 }
 
