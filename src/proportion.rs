@@ -20,7 +20,7 @@
 //! use layuit::proportion::Percent;
 //! use layuit::stacks::HStack;
 //! use layuit::padding::Spacer;
-//! 
+//!
 //! let mut tree = UiTree::new(HStack::new());
 //!
 //! // Both nodes hold a Spacer with a size of 10x10 and occupy the full space. Default alignment is
@@ -35,7 +35,7 @@
 //!     .with_child(tree.add_node(Spacer::sized((10.0, 10.0))))
 //!     .with_percent((0.5, 0.5))
 //!     .with_strict(false);
-//! 
+//!
 //! let strict_index = tree.add_node(strict);
 //! let non_strict_index = tree.add_node(non_strict);
 //!
@@ -43,7 +43,7 @@
 //!     .get_root_mut()
 //!     .downcast_mut::<HStack>()
 //!     .unwrap();
-//! 
+//!
 //! root.add_child(strict_index);
 //! root.add_child(non_strict_index);
 //!
@@ -51,9 +51,9 @@
 //!
 //! // Final results:
 //!
-//! // Strict has a size of 20x20, since its minimum grew to ensure the percentage is always upheld.
+//! // strict has a size of 20x20, since its minimum grew to ensure the percentage is always upheld.
 //!
-//! // Non_strict has a size of 10x10, since its minimum remained the same as the spacer, and the
+//! // non_strict has a size of 10x10, since its minimum remained the same as the spacer, and the
 //! // percentage was not upheld.
 //! ```
 use thunderdome::Index as TdIndex;

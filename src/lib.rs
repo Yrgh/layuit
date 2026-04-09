@@ -104,14 +104,19 @@
 //! the limitation that you cannot create your entire tree this way; your root node must be created
 //! manually.
 //!
+//! Additionally, you can create variables outside the macro and assign the indices of nodes created
+//! by the macro to them.
+//!
 //! ```rust
 //! use layuit::UiTree;
 //! use layuit::padding::{Spacer, Minimum};
 //! use layuit::stacks::HStack;
 //! use layuit::proportion::HSplit;
 //! use layuit::overlap::Overlap;
+//! use thunderdome::Index;
 //!
 //! let mut tree = UiTree::new(Overlap::new());
+//! let mut spacer3 = Index::DANGLING;
 //! let node_index = layuit::ui!(
 //!     &mut tree,
 //!     +|+ HStack::new() => [
@@ -119,7 +124,7 @@
 //!         -|- Minimum::new().with_min((20.0, 20.0)) => [
 //!             -|- Spacer::sized((10.0, 10.0))
 //!         ],
-//!         -|> Spacer::sized((10.0, 10.0))
+//!         spacer3 = -|> Spacer::sized((10.0, 10.0))
 //!     ]
 //! );
 //!
@@ -129,51 +134,20 @@
 //!     .unwrap()
 //!     .add_child(node_index);
 //!
-//! // Overlap (N/A, N/A)
-//! // └─ HStack (Full, Full)
+//! tree
+//!     .get_node_mut(spacer3)
+//!     .unwrap()
+//!     .downcast_mut::<Spacer>()
+//!     .unwrap()
+//!     .set_size((20.0, 20.0));
+//!
+//!
+//! // Overlap (N/A, N/A) <- Tree root
+//! // └─ HStack (Full, Full) = node_index
 //! //    ├─ Spacer (N/A, Begin)
 //! //    ├─ Minimum (N/A, Center)
 //! //    │  └─ Spacer (Center, Center)
-//! //    └─ Spacer (N/A, End)
-//! ```
-//!
-//! ## Creating a tree manually
-//!
-//! Alternatively, you can create the entire tree manually. It is more verbose, but necessary for
-//! creating dynamic components, as the macro does not allow you to retrieve the node indices.
-//!
-//! ```rust
-//! use layuit::{UiTree, UiNode};
-//! use layuit::stacks::HStack;
-//!
-//! // The root node can be any UiNode, but must be specified.
-//! let mut tree = UiTree::new(HStack::new().with_spacing(4.0));
-//!
-//! let label = Label::new("Hello, world!");
-//!
-//! let label_index = tree.add_node(label);
-//!
-//! // Create a label from the example above, wrapped in a 4px margin
-//! let margin = Margin::new()
-//!     .with_equal(4.0)
-//!     .with_child(label_index);
-//!
-//! let margin_index = tree.add_node(margin);
-//!
-//! // Add the label to the root stack
-//! tree
-//!     .get_root_mut()
-//!     .downcast_mut::<HStack>()
-//!     .unwrap()
-//!     .add_child(margin_index);
-//!
-//! tree
-//!     .get_node_mut(label_index)
-//!     .downcast_mut::<Label>()
-//!     .unwrap()
-//!     .set_text("I survived!");
-//!
-//! tree.calculate_layout(Rect::new(0.0, 0.0, 640.0, 480.0));
+//! //    └─ Spacer (N/A, End) = spacer3
 //! ```
 //!
 //! ## Provided nodes
@@ -348,6 +322,8 @@ impl Rect {
     /// Example:
     ///
     /// ```rust
+    /// use layuit::{Rect, Alignment};
+    ///
     /// let rect = Rect::new(0.0, 0.0, 100.0, 100.0);
     ///
     /// let contained_center = rect.align((Alignment::Center, Alignment::Center), (50.0, 50.0));
@@ -650,20 +626,21 @@ impl UiTree {
 /// **index**.
 ///
 /// Each node is represented by two alignment symbols, separated by a `|`, a constructor for the
-/// node, an an optional list of children, contained in square brackets after `=>`.
+/// node, and an optional list of children, contained in square brackets after `=>`.
 ///
 /// The alignment characters are orderer horizontal then vertical, with the following allowed:
 ///
 /// `+` - [`Full`]
-/// 
+///
 /// `-` - [`Center`]
-/// 
+///
 /// `<` - [`Begin`]
-/// 
+///
 /// `>` - [`End`]
-/// 
-/// Any tree is constructible with this macro, however you cannot directly obtain the node indices
-/// and you need to create the tree beforehand and add the new node to it manually.
+///
+/// Additionally, before a node's alignment, you may write `name =`. `name` must be a mutable
+/// variable, which will be assigned to the node's index when it is created. It should be
+/// initialized with [`thunderdome::Index::DANGLING`].
 ///
 /// ## Example usage
 /// ```rust
@@ -699,185 +676,150 @@ impl UiTree {
 /// [`Center`]: crate::Alignment::Center
 /// [`End`]: crate::Alignment::End
 /// [`Full`]: crate::Alignment::Full
+/// [`thunderdome::Index::DANGLING`]: https://docs.rs/thunderdome/latest/thunderdome/struct.Index.html#variant.DANGLING
 macro_rules! ui {
     ($tree:expr, $($node:tt)*) => {
+        $crate::ui!(@@_node $tree;; $($node)*)
+    };
+
+    // With binding, no children
+    (@@_node $tree:expr;; $binding:ident = $ha:tt | $va:tt $node:expr) => {
         {
-            let __ui_node = $crate::ui!(@node $tree;; $($node)*);
-            $tree.add_node(__ui_node)
+            let __node_idx = $tree.add_node($crate::ui!(@@_align $ha | $va $node));
+            $binding = __node_idx;
+            __node_idx
+        }
+    };
+
+    // With binding, with children
+    (@@_node $tree:expr;; $binding:ident = $ha:tt | $va:tt $node:expr => [ $($child:tt)* ]) => {
+        {
+            let __ui_node = $crate::ui!(
+                @@_child
+                $tree;;
+                $crate::ui!(@@_align $ha | $va $node)
+                => [ $($child)* ]
+            );
+            let __node_idx = $tree.add_node(__ui_node);
+            $binding = __node_idx;
+            __node_idx
+        }
+    };
+
+    // Without binding, without children
+    (@@_node $tree:expr;; $ha:tt | $va:tt $node:expr) => {
+        {
+            let __node_idx = $tree.add_node($crate::ui!(@@_align $ha | $va $node));
+            __node_idx
+        }
+    };
+
+    // Without binding, with children
+    (@@_node $tree:expr;; $ha:tt | $va:tt $node:expr => [ $($child:tt)* ]) => {
+        {
+            let __ui_node = $crate::ui!(
+                @@_child
+                $tree;;
+                $crate::ui!(@@_align $ha | $va $node)
+                => [ $($child)* ]
+            );
+            let __node_idx = $tree.add_node(__ui_node);
+            __node_idx
         }
     };
 
     // No children
-    (@node $tree:expr;; $ha:tt | $va:tt $node:expr) => {
-        $crate::ui!(@align $ha | $va $node)
-    };
-
-    (@node $tree:expr;; $ha:tt | $va:tt $node:expr => [ $($child:tt)* ]) => {
-        $crate::ui!(
-            @child
-            $tree;;
-            $crate::ui!(@node $tree;; $ha | $va $node)
-            => [ $($child)* ]
-        )
-    };
-
-    // No children
-    (@child $tree:expr;; $node:expr => [ ]) => {
+    (@@_child $tree:expr;; $node:expr => [ ]) => {
         $node
     };
 
-    // Child with children + extra children
+    // Children, with binding
     (
-        @child
+        @@_child
+        $tree:expr;;
+        $node:expr
+        => [
+            $binding:ident =
+            $ha:tt |
+            $va:tt
+            $child:expr
+            $(=> [ $($grand:tt)* ])?
+            $(, $($rest:tt)*)?
+        ]
+    ) => {
+        {
+            let __node_idx = $crate::ui!(
+                @@_node
+                $tree;;
+                $binding =
+                $ha |
+                $va
+                $child
+                $(=> [ $($grand)* ])?
+            );
+
+            $crate::ui!(
+                @@_child
+                $tree;;
+                $node.with_child(__node_idx)
+                => [ $($($rest)*)? ]
+            )
+        }
+    };
+
+    // Children, no binding
+    (
+        @@_child
         $tree:expr;;
         $node:expr
         => [
             $ha:tt |
             $va:tt
             $child:expr
-            => [ $($grand:tt)* ],
-            $($rest:tt)*
+            $(=> [ $($grand:tt)* ])?
+            $(, $($rest:tt)*)?
         ]
     ) => {
         {
-            let __ui_node = $crate::ui!(
-                @node
+            let __node_idx = $crate::ui!(
+                @@_node
                 $tree;;
                 $ha |
                 $va
                 $child
-                => [ $($grand)* ]
+                $(=> [ $($grand)* ])?
             );
-    
+
             $crate::ui!(
-                @child
+                @@_child
                 $tree;;
-                $node.with_child(
-                    $tree.add_node(__ui_node)
-                )
-                => [ $($rest)* ]
+                $node.with_child(__node_idx)
+                => [ $($($rest)*)? ]
             )
         }
     };
 
-    // Last child with children
-    (
-        @child
-        $tree:expr;;
-        $node:expr
-        => [
-            $ha:tt |
-            $va:tt
-            $child:expr
-            => [ $($grand:tt)* ]
-        ]
-    ) => {
-        {
-            let __ui_node = $crate::ui!(
-                @node
-                $tree;;
-                $ha |
-                $va
-                $child
-                => [ $($grand)* ]
-            );
-    
-            $crate::ui!(
-                @child
-                $tree;;
-                $node.with_child(
-                    $tree.add_node(__ui_node)
-                )
-                => [ ]
-            )
-        }
+    (@@_align $ha:tt | $va: tt $node:expr) => {
+        $node.with_align(($crate::ui!(@@_align $ha), $crate::ui!(@@_align $va)))
     };
 
-    // Child no children + extra children
-    (@child
-        $tree:expr;;
-        $node:expr
-        => [
-            $ha:tt |
-            $va:tt
-            $child:expr,
-            $($rest:tt)*
-        ]
-    ) => {
-        {
-            let __ui_node = $crate::ui!(
-                @node
-                $tree;;
-                $ha |
-                $va
-                $child
-                => [ ]
-            );
-    
-            $crate::ui!(
-                @child
-                $tree;;
-                $node.with_child(
-                    $tree.add_node(__ui_node)
-                )
-                => [ $($rest)* ]
-            )
-        }
-    };
-
-    // Last child no children
-    (
-        @child
-        $tree:expr;;
-        $node:expr
-        => [
-            $ha:tt |
-            $va:tt
-            $child:expr
-        ]
-    ) => {
-        {
-            let __ui_node = $crate::ui!(
-                @node
-                $tree;;
-                $ha |
-                $va
-                $child
-                => [ ]
-            );
-
-            $crate::ui!(
-                @child
-                $tree;;
-                $node.with_child(
-                    $tree.add_node(__ui_node)
-                )
-                => []
-            )
-        }
-    };
-
-    (@align $ha:tt | $va: tt $node:expr) => {
-        $node.with_align(($crate::ui!(@align $ha), $crate::ui!(@align $va)))
-    };
-
-    (@align <) => {
+    (@@_align <) => {
         $crate::Alignment::Begin
     };
 
-    (@align -) => {
+    (@@_align -) => {
         $crate::Alignment::Center
     };
 
-    (@align >) => {
+    (@@_align >) => {
         $crate::Alignment::End
     };
 
-    (@align +) => {
+    (@@_align +) => {
         $crate::Alignment::Full
     };
 
-    (@align $a:tt) => {
+    (@@_align $a:tt) => {
         compile_error!("Invalid alignment. < - > + are allowed.")
     };
 }
