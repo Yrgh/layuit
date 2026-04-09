@@ -115,10 +115,9 @@
 //! use layuit::overlap::Overlap;
 //! use thunderdome::Index;
 //!
-//! let mut tree = UiTree::new(Overlap::new());
 //! let mut spacer3 = Index::DANGLING;
-//! let node_index = layuit::ui!(
-//!     &mut tree,
+//! let (node_index, mut tree) = layuit::ui!(
+//!     %%,
 //!     +|+ HStack::new() => [
 //!         -|< Spacer::sized((10.0, 10.0)),
 //!         -|- Minimum::new().with_min((20.0, 20.0)) => [
@@ -129,12 +128,6 @@
 //! );
 //!
 //! tree
-//!     .get_root_mut()
-//!     .downcast_mut::<Overlap>()
-//!     .unwrap()
-//!     .add_child(node_index);
-//!
-//! tree
 //!     .get_node_mut(spacer3)
 //!     .unwrap()
 //!     .downcast_mut::<Spacer>()
@@ -142,12 +135,11 @@
 //!     .set_size((20.0, 20.0));
 //!
 //!
-//! // Overlap (N/A, N/A) <- Tree root
-//! // └─ HStack (Full, Full) = node_index
-//! //    ├─ Spacer (N/A, Begin)
-//! //    ├─ Minimum (N/A, Center)
-//! //    │  └─ Spacer (Center, Center)
-//! //    └─ Spacer (N/A, End) = spacer3
+//! // HStack (Full, Full) = node_index / tree root
+//! // ├─ Spacer (N/A, Begin)
+//! // ├─ Minimum (N/A, Center)
+//! // │  └─ Spacer (Center, Center)
+//! // └─ Spacer (N/A, End) = spacer3
 //! ```
 //!
 //! ## Provided nodes
@@ -619,11 +611,59 @@ impl UiTree {
     }
 }
 
+/// A [`UiTree`] that does not have a full tree structure assigned.
+/// 
+/// The API for this struct only contains a method to add a node to the tree and a method to
+/// complete the tree. This comes at the benefit of not requiring a root node at construction.
+/// 
+/// It is used internally by the [`ui!`] macro, but can also be used manually.
+pub struct PartialTree {
+    arena: Arena<Box<dyn UiNode>>,
+}
+
+impl PartialTree {
+    /// Constructs a new empty tree.
+    pub fn new() -> Self {
+        Self {
+            arena: Arena::new(),
+        }
+    }
+
+    /// Adds a node to the tree and returns its index.
+    pub fn add_node(&mut self, node: impl UiNode) -> TdIndex {
+        self.arena.insert(Box::new(node) as Box<dyn UiNode>)
+    }
+
+    /// Completes a partial tree into a full UI tree.
+    ///
+    /// Returns a new UI tree with the given root node and the arena and cache from `self`.
+    /// 
+    /// Indices are preserved.
+    ///
+    /// # Panics
+    /// If the tree is malformed, or if the root node is not present in the arena.
+    pub fn complete(self, root: TdIndex) -> UiTree {
+        let cache = self.arena.iter().map(|(id, _)| (id, Default::default())).collect();
+        UiTree {
+            arena: self.arena,
+            root,
+            cache,
+        }
+    }
+}
+
+impl Default for PartialTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[macro_export]
 /// A macro for making the process of creating a UI subtree easier.
 ///
-/// The macro takes a mutable reference to the tree and a node, and returns the final node tree
-/// **index**.
+/// The macro takes a mutable reference to the tree or `%%`, signifying to create one, and a base
+/// node, and returns the index of the base node in the tree. If a tree is created, the index is
+/// stored as the first element of a tuple and the tree is the second.
 ///
 /// Each node is represented by two alignment symbols, separated by a `|`, a constructor for the
 /// node, and an optional list of children, contained in square brackets after `=>`.
@@ -647,11 +687,9 @@ impl UiTree {
 /// use layuit::UiTree;
 /// use layuit::padding::{Spacer, Minimum};
 /// use layuit::stacks::HStack;
-/// use layuit::overlap::Overlap;
-///
-/// let mut tree = UiTree::new(Overlap::new());
-/// let node_index = layuit::ui!(
-///     &mut tree,
+/// 
+/// let (node_index, mut tree) = layuit::ui!(
+///     %%,
 ///     +|+ HStack::new() => [
 ///         -|< Spacer::sized((10.0, 10.0)),
 ///         -|- Minimum::new().with_min((20.0, 20.0)) => [
@@ -661,15 +699,12 @@ impl UiTree {
 ///     ]
 /// );
 ///
-/// tree.get_root_mut().downcast_mut::<Overlap>().unwrap().add_child(node_index);
-///
 /// // Resulting tree:
-/// // Overlap
-/// // └─ HStack (Full, Full)
-/// //    ├─ Spacer (Center, Begin)
-/// //    ├─ Minimum (Center, Center)
-/// //    │  └─ Spacer (Center, Center)
-/// //    └─ Spacer (Center, End)
+/// // HStack (Full, Full)
+/// // ├─ Spacer (Center, Begin)
+/// // ├─ Minimum (Center, Center)
+/// // │  └─ Spacer (Center, Center)
+/// // └─ Spacer (Center, End)
 /// ```
 ///
 /// [`Begin`]: crate::Alignment::Begin
@@ -680,6 +715,14 @@ impl UiTree {
 macro_rules! ui {
     ($tree:expr, $($node:tt)*) => {
         $crate::ui!(@@_node $tree;; $($node)*)
+    };
+
+    (%%, $($node:tt)*) => {
+        {
+            let mut tree = $crate::PartialTree::new();
+            let root = $crate::ui!(@@_node &mut tree;; $($node)*);
+            (root, tree.complete(root))
+        }
     };
 
     // With binding, no children

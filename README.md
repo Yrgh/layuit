@@ -23,13 +23,11 @@ and more readable.
 Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 
 1. **Bottom-up: minimum size.** Children are visited before their parent. Each node computes its
-   minimum size based on its children through [`calculate_min_size`] and stores it in its
-   [`NodeCache::min_size`].
+   minimum size based on its children, which is then cached.
 
 2. **Top-down: rectangles.** Starting from the root, each node computes the position and size of
-   its immediate children through [`calculate_rects`]. Each child then uses its restricted
-   [`Rect`] to do the same for its children. The [`NodeCache::rect`] field is populated with
-   the resulting [`Rect`]s.
+   its immediate children. Each child then uses its restricted
+   [`Rect`] to do the same for its children.
 
 ## Provided nodes
 
@@ -63,7 +61,6 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 [`NodeCache`]: https://docs.rs/layuit/latest/layuit/struct.NodeCache.html
 [`UiTree`]: https://docs.rs/layuit/latest/layuit/struct.UiTree.html
 [`UiTree::calculate_layout`]: https://docs.rs/layuit/latest/layuit/struct.UiTree.html#method.calculate_layout
-[`UiTree::remove_node`]: https://docs.rs/layuit/latest/layuit/struct.UiTree.html#method.remove_node
 [`NodeVisitor`]: https://docs.rs/layuit/latest/layuit/trait.NodeVisitor.html
 [`UiNode`]: https://docs.rs/layuit/latest/layuit/trait.UiNode.html
 [`calculate_min_size`]: https://docs.rs/layuit/latest/layuit/trait.UiNode.html#tymethod.calculate_min_size
