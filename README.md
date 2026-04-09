@@ -84,8 +84,8 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 [`HEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.HEqual.html
 [`VEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.VEqual.html
 [`Grid`]: https://docs.rs/layuit/latest/layuit/grid/struct.Grid.html
-[`Clamp`]: https://docs.rs/layuit/latest/layuit/macro.ui.html
-[`ui!`]: 
+[`Clamp`]: https://docs.rs/layuit/latest/layuit/limit/struct.Clamp.html
+[`ui!`]: https://docs.rs/layuit/latest/layuit/macro.ui.html
 
 [`thunderdome`]: https://crates.io/crates/thunderdome
 [`indexmap`]: https://crates.io/crates/indexmap

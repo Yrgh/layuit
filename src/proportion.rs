@@ -17,29 +17,35 @@
 //!
 //! ```rust
 //! use layuit::{UiTree, Rect};
-//! use layuit::proportional::Percent;
+//! use layuit::proportion::Percent;
+//! use layuit::stacks::HStack;
 //! use layuit::padding::Spacer;
-//! use layuit::overlap::Overlap;
+//! 
+//! let mut tree = UiTree::new(HStack::new());
 //!
 //! // Both nodes hold a Spacer with a size of 10x10 and occupy the full space. Default alignment is
 //! // (Begin, Begin)
 //!
 //! let strict = Percent::new()
-//!     .with_child(tree.add_node(Spacer::sized(0.0, 0.0, 10.0, 10.0)))
+//!     .with_child(tree.add_node(Spacer::sized((10.0, 10.0))))
 //!     .with_percent((0.5, 0.5))
 //!     .with_strict(true);
 //!
 //! let non_strict = Percent::new()
-//!     .with_child(Spacer::sized(0.0, 0.0, 10.0, 10.0), &mut tree)
+//!     .with_child(tree.add_node(Spacer::sized((10.0, 10.0))))
 //!     .with_percent((0.5, 0.5))
 //!     .with_strict(false);
+//! 
+//! let strict_index = tree.add_node(strict);
+//! let non_strict_index = tree.add_node(non_strict);
 //!
-//! // Both nodes will be shrunk, guaranteed.
-//! let mut stack = HStack::new()
-//!     .with_child(strict, &mut tree)
-//!     .with_child(non_strict, &mut tree);
-//!
-//! let mut tree = UiTre::new(stack);
+//! let root = tree
+//!     .get_root_mut()
+//!     .downcast_mut::<HStack>()
+//!     .unwrap();
+//! 
+//! root.add_child(strict_index);
+//! root.add_child(non_strict_index);
 //!
 //! tree.calculate_layout(Rect::new(0.0, 0.0, 30.0, 20.0));
 //!
@@ -88,9 +94,9 @@ impl AspectRatio {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         assert!(self.child.is_none());
-        self.child = Some(tree.add_node(child));
+        self.child = Some(index);
         self
     }
 
@@ -128,6 +134,15 @@ impl AspectRatio {
     pub fn set_ratio(&mut self, ratio: f32) {
         assert!(ratio > 0.0);
         self.ratio = ratio;
+    }
+
+    /// Bind a child node.
+    ///
+    /// # Panics
+    /// If there is already a child node.
+    pub fn add_child(&mut self, index: TdIndex) {
+        assert!(self.child.is_none());
+        self.child = Some(index);
     }
 
     /// Get the tree index of the child.
@@ -243,15 +258,10 @@ impl HSplit {
     ///
     /// # Panics
     /// If there are already child nodes.
-    pub fn with_children(
-        mut self,
-        left: impl UiNode,
-        right: impl UiNode,
-        tree: &mut UiTree,
-    ) -> Self {
+    pub fn with_children(mut self, left: TdIndex, right: TdIndex) -> Self {
         assert!(self.left.is_none() && self.right.is_none());
-        self.left = Some(tree.add_node(left));
-        self.right = Some(tree.add_node(right));
+        self.left = Some(left);
+        self.right = Some(right);
         self
     }
 
@@ -259,14 +269,8 @@ impl HSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
-        if self.left.is_none() {
-            self.left = Some(tree.add_node(child));
-        } else if self.right.is_none() {
-            self.right = Some(tree.add_node(child));
-        } else {
-            panic!("Cannot add child when both children are bound");
-        }
+    pub fn with_child(mut self, index: TdIndex) -> Self {
+        self.add_child(index);
         self
     }
 
@@ -320,6 +324,18 @@ impl HSplit {
     /// If the right slot is not set
     pub fn get_right_index(&self) -> TdIndex {
         self.right.expect("Right slot not set")
+    }
+
+    /// Binds a child node to the left slot, or the right, if the left is occupied.
+    ///
+    /// # Panics
+    /// If both left and right are set.
+    pub fn add_child(&mut self, index: TdIndex) {
+        if self.left.is_none() {
+            self.left = Some(index);
+        } else if self.right.is_none() {
+            self.right = Some(index);
+        }
     }
 }
 
@@ -454,34 +470,23 @@ impl VSplit {
         }
     }
 
-    /// Create two child nodes and bind them to the node.
+    /// Binds two children to the node.
     ///
     /// # Panics
     /// If there are already child nodes.
-    pub fn with_children(
-        mut self,
-        top: impl UiNode,
-        bottom: impl UiNode,
-        tree: &mut UiTree,
-    ) -> Self {
+    pub fn with_children(mut self, top: TdIndex, bottom: TdIndex) -> Self {
         assert!(self.top.is_none() && self.bot.is_none());
-        self.top = Some(tree.add_node(top));
-        self.bot = Some(tree.add_node(bottom));
+        self.top = Some(top);
+        self.bot = Some(bottom);
         self
     }
 
-    /// Creates and binds a child node to the top slot, or the bottom, if the top is occupied.
+    /// Binds a child node to the top slot, or the bottom, if the top is occupied.
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
-        if self.top.is_none() {
-            self.top = Some(tree.add_node(child));
-        } else if self.bot.is_none() {
-            self.bot = Some(tree.add_node(child));
-        } else {
-            panic!("Cannot add child when both children are bound");
-        }
+    pub fn with_child(mut self, index: TdIndex) -> Self {
+        self.add_child(index);
         self
     }
 
@@ -535,6 +540,20 @@ impl VSplit {
     /// If the top node is not set.
     pub fn get_bottom_index(&self) -> TdIndex {
         self.bot.expect("Bottom slot not set")
+    }
+
+    /// Binds a child node to the top slot, or the bottom, if the top is occupied.
+    ///
+    /// # Panics
+    /// If both left and right are set.
+    pub fn add_child(&mut self, index: TdIndex) {
+        if self.top.is_none() {
+            self.top = Some(index);
+        } else if self.bot.is_none() {
+            self.bot = Some(index);
+        } else {
+            panic!("Cannot add child when both children are bound");
+        }
     }
 }
 
@@ -666,9 +685,9 @@ impl Percent {
     ///
     /// # Panics
     /// If the child is already set
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         assert!(self.child.is_none());
-        self.child = Some(tree.add_node(child));
+        self.child = Some(index);
         self
     }
 
@@ -747,6 +766,15 @@ impl Percent {
     /// Get the percentage of space to give to the first child
     pub fn get_percent(&self) -> (f32, f32) {
         self.percent
+    }
+
+    /// Bind a child node.
+    ///
+    /// # Panics
+    /// If there is already a child node.
+    pub fn add_child(&mut self, index: TdIndex) {
+        assert!(self.child.is_none());
+        self.child = Some(index);
     }
 
     /// Get the tree index of the child.
