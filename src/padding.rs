@@ -64,13 +64,13 @@ impl Margin {
         }
     }
 
-    /// Create a child node and bind it to the node.
+    /// Bind a child node.
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         assert!(self.child.is_none());
-        self.child = Some(tree.add_node(child));
+        self.child = Some(index);
         self
     }
 
@@ -237,13 +237,13 @@ impl Minimum {
         }
     }
 
-    /// Create a child node and bind it to the node.
+    /// Bind a child node to the node.
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         assert!(self.child.is_none());
-        self.child = Some(tree.add_node(child));
+        self.child = Some(index);
         self
     }
 
@@ -257,6 +257,15 @@ impl Minimum {
     pub fn with_min(mut self, min: (f32, f32)) -> Self {
         self.min_override = min;
         self
+    }
+
+    /// Bind a child node to the node.
+    ///
+    /// # Panics
+    /// If there is already a child node.
+    pub fn add_child(&mut self, index: TdIndex) {
+        assert!(self.child.is_none());
+        self.child = Some(index);
     }
 
     /// Get the tree index of the child.

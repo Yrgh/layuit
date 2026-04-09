@@ -74,8 +74,9 @@
 //!
 //! pub struct Label {
 //!     text: String,
-//!     align: (Alignment, Alignment),
 //!     cached_size: (f32, f32),
+//!
+//!     align: (Alignment, Alignment),
 //! }
 //!
 //! /* Label methods and constructors... */
@@ -103,32 +104,30 @@
 //! the limitation that you cannot create your entire tree this way; your root node must be created
 //! manually.
 //!
-//! There is a second limitation with nodes that have a fixed number of children greater than one,
-//! such as [`HSplit`], as these nodes have [`with_children`] instead of `with_child`, which the
-//! macro is not designed for. You can still use these nodes in the macro, but you cannot use
-//! `=> [ ... ]` with them or their children.
-//!
-//! [`with_children`]: proportion::HSplit::with_children
-//!
 //! ```rust
-//! /// use layuit::UiTree;
+//! use layuit::UiTree;
 //! use layuit::padding::{Spacer, Minimum};
 //! use layuit::stacks::HStack;
 //! use layuit::proportion::HSplit;
 //! use layuit::overlap::Overlap;
 //!
 //! let mut tree = UiTree::new(Overlap::new());
-//! let node = layuit::ui!(
-//!     ++ HStack::new() => [
-//!         -< Spacer::sized((10.0, 10.0)),
-//!         -- Minimum::new().with_min((20.0, 20.0)) => [
-//!             -- Spacer::sized((10.0, 10.0))
+//! let node_index = layuit::ui!(
+//!     &mut tree,
+//!     +|+ HStack::new() => [
+//!         -|< Spacer::sized((10.0, 10.0)),
+//!         -|- Minimum::new().with_min((20.0, 20.0)) => [
+//!             -|- Spacer::sized((10.0, 10.0))
 //!         ],
-//!         -> Spacer::sized((10.0, 10.0))
+//!         -|> Spacer::sized((10.0, 10.0))
 //!     ]
 //! );
 //!
-//! tree.get_root_mut().downcast_mut::<Overlap>().unwrap().add_child(node, &mut tree);
+//! tree
+//!     .get_root_mut()
+//!     .downcast_mut::<Overlap>()
+//!     .unwrap()
+//!     .add_child(node_index);
 //!
 //! // Overlap (N/A, N/A)
 //! // └─ HStack (Full, Full)
@@ -150,16 +149,29 @@
 //! // The root node can be any UiNode, but must be specified.
 //! let mut tree = UiTree::new(HStack::new().with_spacing(4.0));
 //!
+//! let label = Label::new("Hello, world!");
+//!
+//! let label_index = tree.add_node(label);
+//!
 //! // Create a label from the example above, wrapped in a 4px margin
-//! let padded_label = Margin::new()
+//! let margin = Margin::new()
 //!     .with_equal(4.0)
-//!     .with_child(Label::new("Hello, world!"), &mut tree);
+//!     .with_child(label_index);
+//!
+//! let margin_index = tree.add_node(margin);
 //!
 //! // Add the label to the root stack
-//! tree.get_root_mut()
+//! tree
+//!     .get_root_mut()
 //!     .downcast_mut::<HStack>()
 //!     .unwrap()
-//!     .with_child(padded_label, &mut tree);
+//!     .add_child(margin_index);
+//!
+//! tree
+//!     .get_node_mut(label_index)
+//!     .downcast_mut::<Label>()
+//!     .unwrap()
+//!     .set_text("I survived!");
 //!
 //! tree.calculate_layout(Rect::new(0.0, 0.0, 640.0, 480.0));
 //! ```
@@ -634,12 +646,24 @@ impl UiTree {
 #[macro_export]
 /// A macro for making the process of creating a UI subtree easier.
 ///
-/// The macro takes a mutable reference to a [`UiTree`] and a description for a UI node. The
-/// description should begin with two alignment characters, an expression that creates the UI node,
-/// and optionally a list of children.
+/// The macro takes a mutable reference to the tree and a node, and returns the final node tree
+/// **index**.
 ///
-/// For the alignment characters, `<` maps to [`Begin`], `-` maps to [`Center`], `>` maps to
-/// [`End`], and `+` maps to [`Full`].
+/// Each node is represented by two alignment symbols, separated by a `|`, a constructor for the
+/// node, an an optional list of children, contained in square brackets after `=>`.
+///
+/// The alignment characters are orderer horizontal then vertical, with the following allowed:
+///
+/// `+` - [`Full`]
+/// 
+/// `-` - [`Center`]
+/// 
+/// `<` - [`Begin`]
+/// 
+/// `>` - [`End`]
+/// 
+/// Any tree is constructible with this macro, however you cannot directly obtain the node indices
+/// and you need to create the tree beforehand and add the new node to it manually.
 ///
 /// ## Example usage
 /// ```rust
@@ -649,24 +673,26 @@ impl UiTree {
 /// use layuit::overlap::Overlap;
 ///
 /// let mut tree = UiTree::new(Overlap::new());
-/// let node = layuit::ui!(
-///     ++ HStack::new() => [
-///         -< Spacer::sized((10.0, 10.0)),
-///         -- Minimum::new().with_min((20.0, 20.0)) => [
-///             -- Spacer::sized((10.0, 10.0))
+/// let node_index = layuit::ui!(
+///     &mut tree,
+///     +|+ HStack::new() => [
+///         -|< Spacer::sized((10.0, 10.0)),
+///         -|- Minimum::new().with_min((20.0, 20.0)) => [
+///             -|- Spacer::sized((10.0, 10.0))
 ///         ],
-///         -> Spacer::sized((10.0, 10.0))
+///         -|> Spacer::sized((10.0, 10.0))
 ///     ]
 /// );
 ///
-/// tree.get_root_mut().downcast_mut::<Overlap>().unwrap().add_child(node, &mut tree);
+/// tree.get_root_mut().downcast_mut::<Overlap>().unwrap().add_child(node_index);
 ///
-/// // Overlap (N/A, N/A)
+/// // Resulting tree:
+/// // Overlap
 /// // └─ HStack (Full, Full)
-/// //    ├─ Spacer (N/A, Begin)
-/// //    ├─ Minimum (N/A, Center)
+/// //    ├─ Spacer (Center, Begin)
+/// //    ├─ Minimum (Center, Center)
 /// //    │  └─ Spacer (Center, Center)
-/// //    └─ Spacer (N/A, End)
+/// //    └─ Spacer (Center, End)
 /// ```
 ///
 /// [`Begin`]: crate::Alignment::Begin
@@ -675,150 +701,180 @@ impl UiTree {
 /// [`Full`]: crate::Alignment::Full
 macro_rules! ui {
     ($tree:expr, $($node:tt)*) => {
-        ui!(@node $tree;; $($node)*)
+        {
+            let __ui_node = $crate::ui!(@node $tree;; $($node)*);
+            $tree.add_node(__ui_node)
+        }
     };
 
     // No children
-    (@node $tree:expr;; $ha:tt $va: tt $node:expr) => {
-        $node.with_align((ui!(@align $ha), ui!(@align $va)))
+    (@node $tree:expr;; $ha:tt | $va:tt $node:expr) => {
+        $crate::ui!(@align $ha | $va $node)
     };
 
-    (@node $tree:expr;; $ha:tt $va: tt $node:expr => [ $($child:tt)* ]) => {
-        ui!(@child $tree;; $node.with_align((ui!(@align $ha), ui!(@align $va))) => [ $($child)* ])
+    (@node $tree:expr;; $ha:tt | $va:tt $node:expr => [ $($child:tt)* ]) => {
+        $crate::ui!(
+            @child
+            $tree;;
+            $crate::ui!(@node $tree;; $ha | $va $node)
+            => [ $($child)* ]
+        )
     };
 
+    // No children
     (@child $tree:expr;; $node:expr => [ ]) => {
         $node
     };
 
+    // Child with children + extra children
     (
         @child
         $tree:expr;;
         $node:expr
         => [
-            $ha:tt
-            $va: tt
+            $ha:tt |
+            $va:tt
             $child:expr
-            => [ $($grand:tt)* ], $($rest:tt)*
+            => [ $($grand:tt)* ],
+            $($rest:tt)*
         ]
     ) => {
-        ui!(
-            @child
-            $tree;;
-            $node.with_child(
-                ui!(
-                    @node
-                    $tree;;
-                    $ha
-                    $va
-                    $child
-                    => [ $($grand)* ]
-                ),
-                $tree
+        {
+            let __ui_node = $crate::ui!(
+                @node
+                $tree;;
+                $ha |
+                $va
+                $child
+                => [ $($grand)* ]
+            );
+    
+            $crate::ui!(
+                @child
+                $tree;;
+                $node.with_child(
+                    $tree.add_node(__ui_node)
+                )
+                => [ $($rest)* ]
             )
-            => [ $($rest)* ]
-        )
+        }
     };
 
+    // Last child with children
     (
         @child
         $tree:expr;;
         $node:expr
         => [
-            $ha:tt
-            $va: tt
+            $ha:tt |
+            $va:tt
             $child:expr
             => [ $($grand:tt)* ]
-            ]
+        ]
     ) => {
-        ui!(
-            @child
-            $tree;;
-            $node.with_child(
-                ui!(
-                    @node
-                    $tree;;
-                    $ha
-                    $va
-                    $child
-                    => [ $($grand)* ]
-                ),
-                $tree
+        {
+            let __ui_node = $crate::ui!(
+                @node
+                $tree;;
+                $ha |
+                $va
+                $child
+                => [ $($grand)* ]
+            );
+    
+            $crate::ui!(
+                @child
+                $tree;;
+                $node.with_child(
+                    $tree.add_node(__ui_node)
+                )
+                => [ ]
             )
-            => []
-        )
+        }
     };
 
+    // Child no children + extra children
     (@child
         $tree:expr;;
         $node:expr
         => [
-            $ha:tt
-            $va: tt
-            $child:expr
-            , $($rest:tt)*
+            $ha:tt |
+            $va:tt
+            $child:expr,
+            $($rest:tt)*
         ]
     ) => {
-        ui!(
-            @child
-            $tree;;
-            $node.with_child(
-                ui!(
-                    @node
-                    $tree;;
-                    $ha
-                    $va
-                    $child
-                    => [ ]
-                ),
-                $tree
+        {
+            let __ui_node = $crate::ui!(
+                @node
+                $tree;;
+                $ha |
+                $va
+                $child
+                => [ ]
+            );
+    
+            $crate::ui!(
+                @child
+                $tree;;
+                $node.with_child(
+                    $tree.add_node(__ui_node)
+                )
+                => [ $($rest)* ]
             )
-            => [ $($rest)* ]
-        )
+        }
     };
 
+    // Last child no children
     (
         @child
         $tree:expr;;
         $node:expr
         => [
-            $ha:tt
-            $va: tt
+            $ha:tt |
+            $va:tt
             $child:expr
         ]
     ) => {
-        ui!(
-            @child
-            $tree;;
-            $node.with_child(
-                ui!(
-                    @node
-                    $tree;;
-                    $ha
-                    $va
-                    $child
-                    => [ ]
-                ),
-                $tree
+        {
+            let __ui_node = $crate::ui!(
+                @node
+                $tree;;
+                $ha |
+                $va
+                $child
+                => [ ]
+            );
+
+            $crate::ui!(
+                @child
+                $tree;;
+                $node.with_child(
+                    $tree.add_node(__ui_node)
+                )
+                => []
             )
-            => []
-        )
+        }
+    };
+
+    (@align $ha:tt | $va: tt $node:expr) => {
+        $node.with_align(($crate::ui!(@align $ha), $crate::ui!(@align $va)))
     };
 
     (@align <) => {
-        Alignment::Begin
+        $crate::Alignment::Begin
     };
 
     (@align -) => {
-        Alignment::Center
+        $crate::Alignment::Center
     };
 
     (@align >) => {
-        Alignment::End
+        $crate::Alignment::End
     };
 
     (@align +) => {
-        Alignment::Full
+        $crate::Alignment::Full
     };
 
     (@align $a:tt) => {

@@ -26,12 +26,8 @@ impl Overlap {
     }
 
     /// Add a new child to the list.
-    ///
-    /// See [`add_child`].
-    ///
-    /// [`add_child`]: Self::add_child
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
-        self.add_child(child, tree);
+    pub fn with_child(mut self, index: TdIndex) -> Self {
+        self.children.insert(index);
         self
     }
 
@@ -42,8 +38,7 @@ impl Overlap {
     }
 
     /// Add a child to the list. The child will appear on top (last-visited).
-    pub fn add_child(&mut self, child: impl UiNode, tree: &mut UiTree) {
-        let index = tree.add_node(child);
+    pub fn add_child(&mut self, index: TdIndex) {
         self.children.insert(index);
     }
 

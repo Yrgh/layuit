@@ -43,13 +43,13 @@ impl Clip {
         }
     }
 
-    /// Create a child node and bind it to the node.
+    /// Bind a child node.
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         assert!(self.child.is_none());
-        self.child = Some(tree.add_node(child));
+        self.child = Some(index);
         self
     }
 
@@ -83,6 +83,15 @@ impl Clip {
     pub fn set_offset(&mut self, offset: (f32, f32)) {
         assert!(offset.0 >= 0.0 && offset.1 >= 0.0);
         self.offset = offset;
+    }
+
+    /// Bind a child node.
+    ///
+    /// # Panics
+    /// If there is already a child node.
+    pub fn add_child(&mut self, index: TdIndex) {
+        assert!(self.child.is_none());
+        self.child = Some(index);
     }
 
     /// Get the tree index of the child.

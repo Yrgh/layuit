@@ -6,14 +6,15 @@ A renderer-agnostic UI layout system. Layuit handles computing the size and posi
 Layuit provides several organizational nodes such as [`HStack`] and [`Margin`], but allows users
 to create their own nodes.
 
+Layuit also provides a helpful [`ui!`] macro to make constructing complex static trees much easier
+and more readable.
+
 ## Core concepts
 
 - **[`UiTree`]**: Owns the [`UiNode`]s and layout information in an arena and handles
   computation and access.
 - **[`UiNode`]**: A trait implemented by all UI nodes, containing alignment and any number of
   children.
-- **[`NodeCache`]**: The cached layout information for a node, produced by
-  [`UiTree::calculate_layout`].
 - **[`Rect`]**: A rectangle in space, represented with `f32` coordinates.
 - **[`Alignment`]**: An alignment primarily used for determining node placement.
 
@@ -83,7 +84,8 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 [`HEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.HEqual.html
 [`VEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.VEqual.html
 [`Grid`]: https://docs.rs/layuit/latest/layuit/grid/struct.Grid.html
-[`Clamp`]: https://docs.rs/layuit/latest/layuit/limit/struct.Clamp.html
+[`Clamp`]: https://docs.rs/layuit/latest/layuit/macro.ui.html
+[`ui!`]: 
 
 [`thunderdome`]: https://crates.io/crates/thunderdome
 [`indexmap`]: https://crates.io/crates/indexmap

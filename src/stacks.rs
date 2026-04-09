@@ -48,12 +48,8 @@ impl HStack {
     }
 
     /// Add a new child to the stack.
-    ///
-    /// See [`add_child`].
-    ///
-    /// [`add_child`]: Self::add_child
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
-        self.add_child(child, tree);
+    pub fn with_child(mut self, index: TdIndex) -> Self {
+        self.children.insert(index);
         self
     }
 
@@ -78,8 +74,7 @@ impl HStack {
     }
 
     /// Add a child to the stack. The child will appear at the end.
-    pub fn add_child(&mut self, child: impl UiNode, tree: &mut UiTree) {
-        let index = tree.add_node(child);
+    pub fn add_child(&mut self, index: TdIndex) {
         self.children.insert(index);
     }
 
@@ -205,12 +200,8 @@ impl VStack {
     }
 
     /// Add a new child to the stack.
-    ///
-    /// See [`add_child`].
-    ///
-    /// [`add_child`]: Self::add_child
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
-        self.add_child(child, tree);
+    pub fn with_child(mut self, index: TdIndex) -> Self {
+        self.children.insert(index);
         self
     }
 
@@ -244,8 +235,7 @@ impl VStack {
     }
 
     /// Add a child to the stack. The child will appear at the end.
-    pub fn add_child(&mut self, child: impl UiNode, tree: &mut UiTree) {
-        let index = tree.add_node(child);
+    pub fn add_child(&mut self, index: TdIndex) {
         self.children.insert(index);
     }
 

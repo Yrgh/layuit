@@ -44,15 +44,25 @@ impl Hider {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         assert!(self.child.is_none());
-        self.child = Some(tree.add_node(child));
+        self.child = Some(index);
         self
     }
 
+    /// Set whether the child is hidden.
     pub fn with_hidden(mut self, hidden: bool) -> Self {
         self.hidden = hidden;
         self
+    }
+
+    /// Bind a child node to the node.
+    ///
+    /// # Panics
+    /// If there is already a child node.
+    pub fn add_child(&mut self, index: TdIndex) {
+        assert!(self.child.is_none());
+        self.child = Some(index);
     }
 }
 
@@ -114,6 +124,9 @@ impl UiNode for Hider {
 /// You can change which node is selected as visible, or set no child to be visible. If you wish
 /// to have multiple children visible at once, wrap all of them in [`Hider`]s and your choice of
 /// container.
+///
+/// The minimum size of the selector is the minimum size of the selected child, or 0 if none is
+/// selected.
 pub struct Selector {
     selected: Option<TdIndex>,
 
@@ -135,8 +148,7 @@ impl Selector {
     }
 
     /// Add a new child to the list. If there are no other children, the new child will be selected.
-    pub fn with_child(mut self, child: impl UiNode, tree: &mut UiTree) -> Self {
-        let index = tree.add_node(child);
+    pub fn with_child(mut self, index: TdIndex) -> Self {
         if self.selected.is_none() {
             self.selected = Some(index);
         }
@@ -151,8 +163,7 @@ impl Selector {
     }
 
     /// Add a child to the list.
-    pub fn add_child(&mut self, child: impl UiNode, tree: &mut UiTree) {
-        let index = tree.add_node(child);
+    pub fn add_child(&mut self, index: TdIndex) {
         self.children.insert(index);
     }
 

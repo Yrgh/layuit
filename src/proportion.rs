@@ -25,7 +25,7 @@
 //! // (Begin, Begin)
 //!
 //! let strict = Percent::new()
-//!     .with_child(Spacer::sized(0.0, 0.0, 10.0, 10.0), &mut tree)
+//!     .with_child(tree.add_node(Spacer::sized(0.0, 0.0, 10.0, 10.0)))
 //!     .with_percent((0.5, 0.5))
 //!     .with_strict(true);
 //!
