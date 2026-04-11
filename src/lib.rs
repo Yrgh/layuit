@@ -453,6 +453,15 @@ pub trait UiWalker {
     fn leave(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
 }
 
+#[derive(Default)]
+pub struct CalculateLayoutConfig {
+    /// If `true`, applies the root node's alignment instead of ignoring it.
+    pub align_root: bool,
+    /// If `true`, ensures that the minimum size of the root node is met, even if that would exceed
+    /// the provided rect.
+    pub force_good: bool
+}
+
 /// A tree of UI nodes, stored as an arena.
 pub struct UiTree {
     root: TdIndex,
@@ -523,16 +532,36 @@ impl UiTree {
         &mut **self.arena.get_mut(self.root).expect("Root not valid")
     }
 
-    /// Calculate the layout information for all nodes in the tree.
+    /// Calculate the layout information for all nodes in the tree. This is equivalent to calling
+    /// [`calculate_layout_ex`] with the default configuration.
     ///
     /// Returns `true` if `root_rect` preserves minimum size requirements. If the given
-    /// space is too small, `false` is returned, but the cache will still be updated/
+    /// space is too small, `false` is returned, but the cache will still be updated. The root node
+    /// will be treated as having ([`Full`], [`Full`]) alignment.
     ///
     /// Nodes that are not visible will be given a minimum size of `(0, 0)`.
     ///
     /// # Panics
     /// If the tree is malformed
+    /// 
+    /// [`calculate_layout_ex`]: Self::calculate_layout_ex
+    /// [`Full`]: Alignment::Full
     pub fn calculate_layout(&mut self, root_rect: Rect) -> bool {
+        self.calculate_layout_ex(root_rect, Default::default())
+    }
+
+    /// Calculate the layout information for all nodes in the tree, with additional control of the
+    /// process.
+    /// 
+    /// If `force_good` is `true`, ensures that the minimum size of the root node is met, even if
+    /// that would exceed the provided rect. If `false`, returns whether the minimum size of the
+    /// root node is met.
+    /// 
+    /// If `align_root` is `true`, applies the root node's alignment instead of ignoring it.
+    /// 
+    /// # Panics
+    /// If the tree is malformed
+    pub fn calculate_layout_ex(&mut self, root_rect: Rect, config: CalculateLayoutConfig) -> bool {
         // Clear cache
         for v in self.cache.values_mut() {
             *v = Default::default();
@@ -552,12 +581,27 @@ impl UiTree {
             self.cache.entry(*v).or_default().min_size = min;
         }
 
-        let is_good = root_rect.w >= self.cache[&self.root].min_size.0
-            && root_rect.h >= self.cache[&self.root].min_size.1;
+        let (is_good, root_rect) = if config.force_good {
+            let root_min = self.cache[&self.root].min_size;
+            (true, Rect::new(0.0, 0.0, root_min.0.max(root_rect.w), root_min.1.max(root_rect.h)))
+        } else {
+            let is_good = root_rect.w >= self.cache[&self.root].min_size.0
+                && root_rect.h >= self.cache[&self.root].min_size.1;
 
-        self.cache
-            .entry(self.root)
-            .and_modify(|e| e.rect = root_rect);
+            (is_good, root_rect)
+        };
+
+        if config.align_root {
+            let align = self.arena[self.root].get_align();
+            let min = self.cache[&self.root].min_size;
+            self.cache
+                .entry(self.root)
+                .and_modify(|e| e.rect = root_rect.align(align, min));
+        } else {
+            self.cache
+                .entry(self.root)
+                .and_modify(|e| e.rect = root_rect);
+        }
 
         for v in min_stack {
             let rects = self.arena[v].calculate_rects(&self.cache[&v], self);
