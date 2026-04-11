@@ -21,32 +21,26 @@
 //! use layuit::stacks::HStack;
 //! use layuit::padding::Spacer;
 //!
-//! let mut tree = UiTree::new(HStack::new());
+//! let (_, mut tree) = layuit::ui!(
+//!     %%,
+//!     +|+ HStack::new() => [
+//!         +|+ Percent::new()
+//!             .with_percent((0.5, 0.5))
+//!             .with_strict(true)
+//!         => [
+//!             +|+ Spacer::sized((10.0, 10.0))
+//!         ],
+//!         +|+ Percent::new()
+//!             .with_percent((0.5, 0.5))
+//!             .with_strict(false)
+//!         => [
+//!             +|+ Spacer::sized((10.0, 10.0))
+//!         ],
+//!     ]
+//! );
 //!
-//! // Both nodes hold a Spacer with a size of 10x10 and occupy the full space. Default alignment is
-//! // (Begin, Begin)
-//!
-//! let strict = Percent::new()
-//!     .with_child(tree.add_node(Spacer::sized((10.0, 10.0))))
-//!     .with_percent((0.5, 0.5))
-//!     .with_strict(true);
-//!
-//! let non_strict = Percent::new()
-//!     .with_child(tree.add_node(Spacer::sized((10.0, 10.0))))
-//!     .with_percent((0.5, 0.5))
-//!     .with_strict(false);
-//!
-//! let strict_index = tree.add_node(strict);
-//! let non_strict_index = tree.add_node(non_strict);
-//!
-//! let root = tree
-//!     .get_root_mut()
-//!     .downcast_mut::<HStack>()
-//!     .unwrap();
-//!
-//! root.add_child(strict_index);
-//! root.add_child(non_strict_index);
-//!
+//! // Both Percents hold a Spacer with a size of 10x10 and occupy the full space.
+//! 
 //! tree.calculate_layout(Rect::new(0.0, 0.0, 30.0, 20.0));
 //!
 //! // Final results:

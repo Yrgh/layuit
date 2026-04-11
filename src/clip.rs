@@ -126,10 +126,12 @@ impl UiNode for Clip {
             let (cax, cay) = child.get_align();
 
             // If the child is larger than the parent, clip and offset it. If the child is smaller
-            // than the parent, apply alignment
+            // than the parent, apply alignment.
+
+            // Subtract offset so +1 offset means -1 position
 
             let (x, width) = match cax {
-                _ if child_min.0 > cache.rect.w => (cache.rect.x + self.offset.0, child_min.0),
+                _ if child_min.0 > cache.rect.w => (cache.rect.x - self.offset.0, child_min.0),
                 Alignment::Begin => (cache.rect.x, child_min.0),
                 Alignment::Center => (
                     cache.rect.x + (cache.rect.w - child_min.0) * 0.5,
@@ -140,7 +142,7 @@ impl UiNode for Clip {
             };
 
             let (y, height) = match cay {
-                _ if child_min.1 > cache.rect.h => (cache.rect.y + self.offset.1, child_min.1),
+                _ if child_min.1 > cache.rect.h => (cache.rect.y - self.offset.1, child_min.1),
                 Alignment::Begin => (cache.rect.y, child_min.1),
                 Alignment::Center => (
                     cache.rect.y + (cache.rect.h - child_min.1) * 0.5,

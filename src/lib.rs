@@ -112,10 +112,9 @@
 //! use layuit::padding::{Spacer, Minimum};
 //! use layuit::stacks::HStack;
 //! use layuit::proportion::HSplit;
-//! use layuit::overlap::Overlap;
 //! use thunderdome::Index;
 //!
-//! let mut spacer3 = Index::DANGLING;
+//! let spacer3;
 //! let (node_index, mut tree) = layuit::ui!(
 //!     %%,
 //!     +|+ HStack::new() => [
@@ -372,6 +371,13 @@ impl Rect {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+/// Cached layout information for a node.
+pub struct NodeCache {
+    pub min_size: (f32, f32),
+    pub rect: Rect,
+}
+
 /// Basic functionality for a UI node.
 pub trait UiNode: std::any::Any {
     /// Get the alignment of the node.
@@ -442,15 +448,9 @@ pub trait UiWalker {
     /// Called when a node is visited, before its children.
     fn enter(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
 
-    /// Called after all children of a node have been visited, including if it has no children.
+    /// Called after all children of a node have been visited, including if it has no
+    /// children.
     fn leave(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-/// Cached layout information for a node.
-pub struct NodeCache {
-    pub min_size: (f32, f32),
-    pub rect: Rect,
 }
 
 /// A tree of UI nodes, stored as an arena.
@@ -525,9 +525,8 @@ impl UiTree {
 
     /// Calculate the layout information for all nodes in the tree.
     ///
-    /// Returns `true` if `root_rect` preserves minimum size requirements. If the given space is too
-    /// small, `false` is returned, but the cache will be updated with potentially incorrect
-    /// results.
+    /// Returns `true` if `root_rect` preserves minimum size requirements. If the given
+    /// space is too small, `false` is returned, but the cache will still be updated/
     ///
     /// Nodes that are not visible will be given a minimum size of `(0, 0)`.
     ///
@@ -570,7 +569,8 @@ impl UiTree {
         is_good
     }
 
-    /// Walks the entire tree, starting from the root, with the given walker. See [`walk_node`].
+    /// Walks the entire tree, starting from the root, with the given walker. See
+    /// [`walk_node`].
     ///
     /// If `use_visible` is `true`, only nodes that are visible will be visited.
     ///
@@ -581,12 +581,12 @@ impl UiTree {
 
     /// Walks a single node and its children, with the given walker.
     ///
-    /// First, the walker receives [`enter`] with the node and its cached rect and index. Then, any
-    /// and all children are walked in the order returned by [`UiNode::get_children`]. Finally, the
-    /// walker receives [`leave`].
+    /// First, the walker receives [`enter`] with the node and its cached rect and index.
+    /// Then, any and all children are walked in the order returned by
+    #[doc = concat!("[`", stringify!(UiNode), "::get_visible_children`]")]
+    /// . Finally, the walker receives [`leave`].
     ///
-    /// Parents are always visited before their children. Children are always visited before their
-    /// siblings.
+    /// Parents are always visited before their children.
     ///
     /// *Every* call to [`enter`] **will** be matched with a call to [`leave`].
     ///
@@ -594,7 +594,12 @@ impl UiTree {
     ///
     /// [`enter`]: UiWalker::enter
     /// [`leave`]: UiWalker::leave
-    pub fn walk_node(&mut self, index: TdIndex, walker: &mut impl UiWalker, use_visible: bool) {
+    pub fn walk_node(
+        &mut self,
+        index: TdIndex,
+        walker: &mut impl UiWalker,
+        use_visible: bool
+    ) {
         let rect = self.cache[&index].rect;
         walker.enter(self.arena[index].as_mut(), rect, index);
 
@@ -614,7 +619,8 @@ impl UiTree {
 /// A [`UiTree`] that does not have a full tree structure assigned.
 /// 
 /// The API for this struct only contains a method to add a node to the tree and a method to
-/// complete the tree. This comes at the benefit of not requiring a root node at construction.
+/// complete the tree. This comes at the benefit of not requiring a root node at
+/// construction.
 /// 
 /// It is used internally by the [`ui!`] macro, but can also be used manually.
 pub struct PartialTree {
@@ -661,7 +667,7 @@ impl Default for PartialTree {
 #[macro_export]
 /// A macro for making the process of creating a UI subtree easier.
 ///
-/// The macro takes a mutable reference to the tree or `%%`, signifying to create one, and a base
+/// The macro takes a mutable reference to the tree, or `%%`, signifying to create one, and a base
 /// node, and returns the index of the base node in the tree. If a tree is created, the index is
 /// stored as the first element of a tuple and the tree is the second.
 ///
@@ -678,21 +684,20 @@ impl Default for PartialTree {
 ///
 /// `>` - [`End`]
 ///
-/// Additionally, before a node's alignment, you may write `name =`. `name` must be a mutable
-/// variable, which will be assigned to the node's index when it is created. It should be
-/// initialized with [`thunderdome::Index::DANGLING`].
+/// Additionally, before a node's alignment, you may write `name =` to assign the index of the node
+/// to a variable.
 ///
 /// ## Example usage
 /// ```rust
-/// use layuit::UiTree;
 /// use layuit::padding::{Spacer, Minimum};
 /// use layuit::stacks::HStack;
 /// 
-/// let (node_index, mut tree) = layuit::ui!(
+/// let minimum;
+/// let (_, tree) = layuit::ui!(
 ///     %%,
 ///     +|+ HStack::new() => [
 ///         -|< Spacer::sized((10.0, 10.0)),
-///         -|- Minimum::new().with_min((20.0, 20.0)) => [
+///         minimum = -|- Minimum::new().with_min((20.0, 20.0)) => [
 ///             -|- Spacer::sized((10.0, 10.0))
 ///         ],
 ///         -|> Spacer::sized((10.0, 10.0))
@@ -702,7 +707,7 @@ impl Default for PartialTree {
 /// // Resulting tree:
 /// // HStack (Full, Full)
 /// // ├─ Spacer (Center, Begin)
-/// // ├─ Minimum (Center, Center)
+/// // ├─ Minimum (Center, Center) = minimum
 /// // │  └─ Spacer (Center, Center)
 /// // └─ Spacer (Center, End)
 /// ```
@@ -711,7 +716,6 @@ impl Default for PartialTree {
 /// [`Center`]: crate::Alignment::Center
 /// [`End`]: crate::Alignment::End
 /// [`Full`]: crate::Alignment::Full
-/// [`thunderdome::Index::DANGLING`]: https://docs.rs/thunderdome/latest/thunderdome/struct.Index.html#variant.DANGLING
 macro_rules! ui {
     ($tree:expr, $($node:tt)*) => {
         $crate::ui!(@@_node $tree;; $($node)*)
@@ -723,6 +727,14 @@ macro_rules! ui {
             let root = $crate::ui!(@@_node &mut tree;; $($node)*);
             (root, tree.complete(root))
         }
+    };
+
+    ($($random:tt)*, $($node:tt)*) => {
+        compile_error!(concat!(
+            "Expected either a mutable reference to a tree or `%%`, found `",
+            stringify!($($random)*),
+            "` where the tree should have been."
+        ));
     };
 
     // With binding, no children
@@ -863,6 +875,33 @@ macro_rules! ui {
     };
 
     (@@_align $a:tt) => {
-        compile_error!("Invalid alignment. < - > + are allowed.")
+        compile_error!("Invalid alignment. Only `<`, `-`, `>`, and `+` are allowed.")
+    };
+
+    (@@_node $tree:expr;; $($tt:tt)*) => {
+        compile_error!(concat!(
+            "Invalid node syntax. A node should have an optional assignment, two alignment \
+            characters, separated by a pipe, and a node expression, optionally followed by \
+            a fat arrow and children in square brackets.\nExample:\n\
+            `target = -|< Node::new() => [ ]`\nFound: `",
+            $(stringify!($tt),)*
+            "`."
+        ))
+    };
+
+    (@@_child $tree:expr;; $node:expr => [ $($tt:tt)* ]) => {
+        compile_error!(
+            "Invalid child node syntax. A node should have an optional assignment, two alignment \
+            characters, separated by a pipe, and a node expression, optionally followed by \
+            a fat arrow and children in square brackets."
+        )
+    };
+
+    ($($tt:tt)*) => {
+        compile_error!(concat!(
+            "Expected a tree followed by a `,`, followed by a node, found `",
+            stringify!($($tt)*),
+            "`."
+        ))
     };
 }
