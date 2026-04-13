@@ -162,6 +162,8 @@
 //! - [`VEqual`] - Vertical arrangement with each child getting equal space.
 //! - [`Grid`] - 2D grid of children.
 //! - [`Clamp`] - Constrains a child to a maximum size.
+//! - [`HSplit3`] - Horizontal split between two children, with a third child separating the two.
+//! - [`VSplit3`] - Vertical split between two children, with a third child separating the two.
 //!
 //! [`calculate_min_size`]: UiNode::calculate_min_size
 //! [`calculate_rects`]: UiNode::calculate_rects
@@ -182,6 +184,8 @@
 //! [`VEqual`]: grid::VEqual
 //! [`Grid`]: grid::Grid
 //! [`Clamp`]: limit::Clamp
+//! [`HSplit3`]: split3::HSplit3
+//! [`VSplit3`]: split3::VSplit3
 
 #![warn(clippy::all)]
 #![deny(clippy::unwrap_used)]
@@ -197,6 +201,7 @@ pub mod overlap;
 pub mod padding;
 pub mod prelude;
 pub mod proportion;
+pub mod split3;
 pub mod stacks;
 pub mod visibility;
 

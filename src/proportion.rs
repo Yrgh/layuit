@@ -378,46 +378,19 @@ impl UiNode for HSplit {
                 .expect("Right child not in cache")
                 .min_size;
 
-            let div_left = (cache.rect.w - self.spacing) * self.percent;
+            let left_node = tree.get_node(left).expect("Left child not in cache");
+            let right_node = tree.get_node(right).expect("Right child not in cache");
 
-            // If there is not enough space for the left child, give it enough space and give the
-            // right child the rest.
-
-            if div_left < left_min.0 {
-                let div_right = cache.rect.w - left_min.0 - self.spacing;
-                let x_right = cache.rect.x + left_min.0 + self.spacing;
-
-                let left_space = Rect::new(cache.rect.x, cache.rect.y, left_min.0, cache.rect.h)
-                    .align(self.align, left_min);
-                let right_space = Rect::new(x_right, cache.rect.y, div_right, cache.rect.h)
-                    .align(self.align, right_min);
-                return vec![left_space, right_space];
-            }
-
-            let div_right = cache.rect.w - div_left - self.spacing;
-
-            // If there is not enough space for the right child, give it enough space and give the
-            // left child the rest.
-
-            if div_right < right_min.0 {
-                let div_left = cache.rect.w - right_min.0 - self.spacing;
-                let x_right = cache.rect.x + div_left + self.spacing;
-
-                let left_space = Rect::new(cache.rect.x, cache.rect.y, div_left, cache.rect.h)
-                    .align(self.align, left_min);
-                let right_space = Rect::new(x_right, cache.rect.y, right_min.0, cache.rect.h)
-                    .align(self.align, right_min);
-                return vec![left_space, right_space];
-            }
-
+            let width = cache.rect.w - self.spacing;
+            let div_left = (width * self.percent).clamp(left_min.0, width - right_min.0);
+            let div_right = width - div_left;
             let x_right = cache.rect.x + div_left + self.spacing;
 
-            // If there is enough space for both children, use the percentage to divide the space.
-
             let left_space = Rect::new(cache.rect.x, cache.rect.y, div_left, cache.rect.h)
-                .align(self.align, left_min);
+                .align(left_node.get_align(), left_min);
             let right_space = Rect::new(x_right, cache.rect.y, div_right, cache.rect.h)
-                .align(self.align, right_min);
+                .align(right_node.get_align(), right_min);
+
             vec![left_space, right_space]
         } else {
             vec![]
@@ -596,38 +569,19 @@ impl UiNode for VSplit {
                 .expect("Bottom child not in cache")
                 .min_size;
 
-            let div_top = (cache.rect.h - self.spacing) * self.percent;
+            let top_node = tree.get_node(top).expect("Top child not in cache");
+            let bot_node = tree.get_node(bot).expect("Bottom child not in cache");
 
-            if div_top < top_min.1 {
-                let div_bot = cache.rect.h - top_min.1 - self.spacing;
-                let y_bot = cache.rect.y + top_min.1 + self.spacing;
-
-                let top_space = Rect::new(cache.rect.x, cache.rect.y, cache.rect.w, top_min.1)
-                    .align(self.align, top_min);
-                let bot_space = Rect::new(cache.rect.x, y_bot, cache.rect.w, div_bot)
-                    .align(self.align, bot_min);
-                return vec![top_space, bot_space];
-            }
-
-            let div_bot = cache.rect.h - div_top - self.spacing;
-
-            if div_bot < bot_min.1 {
-                let div_top = cache.rect.h - bot_min.1 - self.spacing;
-                let y_bot = cache.rect.y + div_top + self.spacing;
-
-                let top_space = Rect::new(cache.rect.x, cache.rect.y, cache.rect.w, div_top)
-                    .align(self.align, top_min);
-                let bot_space = Rect::new(cache.rect.x, y_bot, cache.rect.w, bot_min.1)
-                    .align(self.align, bot_min);
-                return vec![top_space, bot_space];
-            }
-
+            let height = cache.rect.h - self.spacing;
+            let div_top = (height * self.percent).clamp(top_min.1, height - bot_min.1);
+            let div_bot = height - div_top;
             let y_bot = cache.rect.y + div_top + self.spacing;
 
             let top_space = Rect::new(cache.rect.x, cache.rect.y, cache.rect.w, div_top)
-                .align(self.align, top_min);
-            let bot_space =
-                Rect::new(cache.rect.x, y_bot, cache.rect.w, div_bot).align(self.align, bot_min);
+                .align(top_node.get_align(), top_min);
+            let bot_space = Rect::new(cache.rect.x, y_bot, cache.rect.w, div_bot)
+                .align(bot_node.get_align(), bot_min);
+
             vec![top_space, bot_space]
         } else {
             vec![]
