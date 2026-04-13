@@ -8,4 +8,4 @@ pub use crate::overlap::Overlap;
 pub use crate::padding::Margin;
 pub use crate::stacks::{HStack, VStack};
 pub use crate::visibility::Hider;
-pub use crate::{Alignment, Anchor, NodeCache, Rect, UiNode, UiTree};
+pub use crate::{Alignment, Anchor, NodeCache, Rect, UiNode, UiTree, NodeIndex};

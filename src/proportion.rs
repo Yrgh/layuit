@@ -50,7 +50,7 @@
 //! // non_strict has a size of 10x10, since its minimum remained the same as the spacer, and the
 //! // percentage was not upheld.
 //! ```
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, Anchor, NodeCache, Rect, UiNode, UiTree};
 
@@ -67,7 +67,7 @@ pub struct AspectRatio {
     pub anchor: (Anchor, Anchor),
 
     align: (Alignment, Alignment),
-    child: Option<TdIndex>,
+    child: Option<NodeIndex>,
 }
 
 impl AspectRatio {
@@ -88,7 +88,7 @@ impl AspectRatio {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -134,13 +134,13 @@ impl AspectRatio {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
-    pub fn get_child(&self) -> Option<TdIndex> {
+    pub fn get_child(&self) -> Option<NodeIndex> {
         self.child
     }
 }
@@ -212,7 +212,7 @@ impl UiNode for AspectRatio {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.child.into_iter().collect()
     }
 }
@@ -229,8 +229,8 @@ pub struct HSplit {
     percent: f32,
 
     align: (Alignment, Alignment),
-    left: Option<TdIndex>,
-    right: Option<TdIndex>,
+    left: Option<NodeIndex>,
+    right: Option<NodeIndex>,
 }
 
 impl HSplit {
@@ -252,7 +252,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If there are already child nodes.
-    pub fn with_children(mut self, left: TdIndex, right: TdIndex) -> Self {
+    pub fn with_children(mut self, left: NodeIndex, right: NodeIndex) -> Self {
         assert!(self.left.is_none() && self.right.is_none());
         self.left = Some(left);
         self.right = Some(right);
@@ -263,7 +263,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.add_child(index);
         self
     }
@@ -308,7 +308,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If the left slot is not set
-    pub fn get_left_index(&self) -> TdIndex {
+    pub fn get_left_index(&self) -> NodeIndex {
         self.left.expect("Left slot not set")
     }
 
@@ -316,7 +316,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If the right slot is not set
-    pub fn get_right_index(&self) -> TdIndex {
+    pub fn get_right_index(&self) -> NodeIndex {
         self.right.expect("Right slot not set")
     }
 
@@ -324,7 +324,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         if self.left.is_none() {
             self.left = Some(index);
         } else if self.right.is_none() {
@@ -424,7 +424,7 @@ impl UiNode for HSplit {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         if let Some((left, right)) = self.left.zip(self.right) {
             vec![left, right]
         } else {
@@ -445,8 +445,8 @@ pub struct VSplit {
     percent: f32,
 
     align: (Alignment, Alignment),
-    top: Option<TdIndex>,
-    bot: Option<TdIndex>,
+    top: Option<NodeIndex>,
+    bot: Option<NodeIndex>,
 }
 
 impl VSplit {
@@ -468,7 +468,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If there are already child nodes.
-    pub fn with_children(mut self, top: TdIndex, bottom: TdIndex) -> Self {
+    pub fn with_children(mut self, top: NodeIndex, bottom: NodeIndex) -> Self {
         assert!(self.top.is_none() && self.bot.is_none());
         self.top = Some(top);
         self.bot = Some(bottom);
@@ -479,7 +479,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.add_child(index);
         self
     }
@@ -524,7 +524,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If the top node is not set.
-    pub fn get_top_index(&self) -> TdIndex {
+    pub fn get_top_index(&self) -> NodeIndex {
         self.top.expect("Top slot not set")
     }
 
@@ -532,7 +532,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If the top node is not set.
-    pub fn get_bottom_index(&self) -> TdIndex {
+    pub fn get_bottom_index(&self) -> NodeIndex {
         self.bot.expect("Bottom slot not set")
     }
 
@@ -540,7 +540,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         if self.top.is_none() {
             self.top = Some(index);
         } else if self.bot.is_none() {
@@ -634,7 +634,7 @@ impl UiNode for VSplit {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         if let Some((top, bot)) = self.top.zip(self.bot) {
             vec![top, bot]
         } else {
@@ -657,7 +657,7 @@ pub struct Percent {
     pub anchor: (Anchor, Anchor),
 
     align: (Alignment, Alignment),
-    child: Option<TdIndex>,
+    child: Option<NodeIndex>,
 }
 
 impl Percent {
@@ -679,7 +679,7 @@ impl Percent {
     ///
     /// # Panics
     /// If the child is already set
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -766,13 +766,13 @@ impl Percent {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
-    pub fn get_child(&self) -> Option<TdIndex> {
+    pub fn get_child(&self) -> Option<NodeIndex> {
         self.child
     }
 }
@@ -821,7 +821,7 @@ impl UiNode for Percent {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         if let Some(child) = self.child {
             vec![child]
         } else {

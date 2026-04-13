@@ -11,7 +11,7 @@
 //!
 //! [`Minimum`]: crate::padding::Minimum
 
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
@@ -30,7 +30,7 @@ pub struct Clip {
     pub offset: (f32, f32),
 
     align: (Alignment, Alignment),
-    child: Option<TdIndex>,
+    child: Option<NodeIndex>,
 }
 
 impl Clip {
@@ -47,7 +47,7 @@ impl Clip {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -89,13 +89,13 @@ impl Clip {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
-    pub fn get_child(&self) -> Option<TdIndex> {
+    pub fn get_child(&self) -> Option<NodeIndex> {
         self.child
     }
 }
@@ -158,7 +158,7 @@ impl UiNode for Clip {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.child.into_iter().collect()
     }
 }

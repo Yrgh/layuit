@@ -4,14 +4,14 @@
 //! child is aligned to the space of the entire container and no restrictions are applied.
 
 use indexmap::IndexSet;
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
 /// A node that contains many children which are stacked on top of each other and do not interact.
 pub struct Overlap {
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
 }
 
 impl Overlap {
@@ -26,7 +26,7 @@ impl Overlap {
     }
 
     /// Add a new child to the list.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -38,7 +38,7 @@ impl Overlap {
     }
 
     /// Add a child to the list. The child will appear on top (last-visited).
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -79,7 +79,7 @@ impl Overlap {
     }
 
     /// Returns the tree index associated with a child at a given list index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 }

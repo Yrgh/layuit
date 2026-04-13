@@ -14,7 +14,7 @@
 
 use indexmap::IndexSet;
 use std::num::NonZero;
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
@@ -25,7 +25,7 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 /// [`Full`]: crate::Alignment::Full
 pub struct HEqual {
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
 }
 
 impl HEqual {
@@ -40,7 +40,7 @@ impl HEqual {
     }
 
     /// Add a new child to the list.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -52,7 +52,7 @@ impl HEqual {
     }
 
     /// Add a child to the list. The child will appear at the end.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -93,7 +93,7 @@ impl HEqual {
     }
 
     /// Returns the tree index associated with a child at a given list index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 }
@@ -153,7 +153,7 @@ impl UiNode for HEqual {
         child_rects
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.children.iter().copied().collect()
     }
 }
@@ -165,7 +165,7 @@ impl UiNode for HEqual {
 /// [`Full`]: crate::Alignment::Full
 pub struct VEqual {
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
 }
 
 impl VEqual {
@@ -180,7 +180,7 @@ impl VEqual {
     }
 
     /// Add a new child to the list.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -192,7 +192,7 @@ impl VEqual {
     }
 
     /// Add a child to the list. The child will appear at the end.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -233,7 +233,7 @@ impl VEqual {
     }
 
     /// Returns the tree index associated with a child at a given list index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 }
@@ -293,7 +293,7 @@ impl UiNode for VEqual {
         child_rects
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.children.iter().copied().collect()
     }
 }
@@ -303,7 +303,7 @@ pub struct Grid {
     pub num_cols: NonZero<usize>,
 
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
 }
 
 impl Grid {
@@ -317,7 +317,7 @@ impl Grid {
     }
 
     /// Add a new child to the grid.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -329,7 +329,7 @@ impl Grid {
     }
 
     /// Add a child to the grid. The child will appear at the end.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -370,7 +370,7 @@ impl Grid {
     }
 
     /// Returns the tree index associated with a child at a given list index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 }
@@ -428,7 +428,7 @@ impl UiNode for Grid {
         child_rects
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.children.iter().copied().collect()
     }
 }

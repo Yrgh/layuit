@@ -188,7 +188,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use thunderdome::{Arena, Index as TdIndex};
+use thunderdome::Arena;
 
 pub mod clip;
 pub mod grid;
@@ -199,6 +199,8 @@ pub mod prelude;
 pub mod proportion;
 pub mod stacks;
 pub mod visibility;
+
+pub use thunderdome::Index as NodeIndex;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 /// An alignment of any sort, for example determining node placement.
@@ -410,7 +412,7 @@ pub trait UiNode: std::any::Any {
     }
 
     /// Get all children of the node, if applicable.
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         vec![]
     }
 
@@ -422,7 +424,7 @@ pub trait UiNode: std::any::Any {
     /// This does not have to have the same order as [`get_children`], but it must be a subset.
     ///
     /// [`get_children`]: Self::get_children
-    fn get_visible_children(&self) -> Vec<TdIndex> {
+    fn get_visible_children(&self) -> Vec<NodeIndex> {
         self.get_children()
     }
 }
@@ -446,11 +448,11 @@ impl dyn UiNode {
 /// A walker for a UI tree.
 pub trait UiWalker {
     /// Called when a node is visited, before its children.
-    fn enter(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
+    fn enter(&mut self, node: &mut dyn UiNode, rect: Rect, index: NodeIndex);
 
     /// Called after all children of a node have been visited, including if it has no
     /// children.
-    fn leave(&mut self, node: &mut dyn UiNode, rect: Rect, index: TdIndex);
+    fn leave(&mut self, node: &mut dyn UiNode, rect: Rect, index: NodeIndex);
 }
 
 #[derive(Default)]
@@ -464,9 +466,9 @@ pub struct CalculateLayoutConfig {
 
 /// A tree of UI nodes, stored as an arena.
 pub struct UiTree {
-    root: TdIndex,
+    root: NodeIndex,
     arena: Arena<Box<dyn UiNode>>,
-    cache: HashMap<TdIndex, NodeCache>,
+    cache: HashMap<NodeIndex, NodeCache>,
 }
 
 impl UiTree {
@@ -482,7 +484,7 @@ impl UiTree {
     }
 
     /// Add a node to the arena.
-    pub fn add_node(&mut self, node: impl UiNode) -> TdIndex {
+    pub fn add_node(&mut self, node: impl UiNode) -> NodeIndex {
         let index = self.arena.insert(Box::new(node) as Box<dyn UiNode>);
         self.cache.insert(index, Default::default());
         index
@@ -494,7 +496,7 @@ impl UiTree {
     /// If the index is invalid or the tree is malformed.
     ///
     /// Also panics if the root node is removed.
-    pub fn remove_node(&mut self, index: TdIndex) {
+    pub fn remove_node(&mut self, index: NodeIndex) {
         assert_ne!(index, self.root, "Root node cannot be removed");
 
         let mut queue: VecDeque<_> = self.arena[index].get_children().into();
@@ -508,17 +510,17 @@ impl UiTree {
     }
 
     /// Get a reference to the cached layout information for a node.
-    pub fn get_cache(&self, index: TdIndex) -> Option<&NodeCache> {
+    pub fn get_cache(&self, index: NodeIndex) -> Option<&NodeCache> {
         self.cache.get(&index)
     }
 
     /// Get a reference to a node.
-    pub fn get_node(&self, index: TdIndex) -> Option<&dyn UiNode> {
+    pub fn get_node(&self, index: NodeIndex) -> Option<&dyn UiNode> {
         self.arena.get(index).map(|node| &**node)
     }
 
     /// Get a mutable reference to a node.
-    pub fn get_node_mut(&mut self, index: TdIndex) -> Option<&mut dyn UiNode> {
+    pub fn get_node_mut(&mut self, index: NodeIndex) -> Option<&mut dyn UiNode> {
         self.arena.get_mut(index).map(|node| &mut **node)
     }
 
@@ -640,7 +642,7 @@ impl UiTree {
     /// [`leave`]: UiWalker::leave
     pub fn walk_node(
         &mut self,
-        index: TdIndex,
+        index: NodeIndex,
         walker: &mut impl UiWalker,
         use_visible: bool
     ) {
@@ -680,7 +682,7 @@ impl PartialTree {
     }
 
     /// Adds a node to the tree and returns its index.
-    pub fn add_node(&mut self, node: impl UiNode) -> TdIndex {
+    pub fn add_node(&mut self, node: impl UiNode) -> NodeIndex {
         self.arena.insert(Box::new(node) as Box<dyn UiNode>)
     }
 
@@ -692,7 +694,7 @@ impl PartialTree {
     ///
     /// # Panics
     /// If the tree is malformed, or if the root node is not present in the arena.
-    pub fn complete(self, root: TdIndex) -> UiTree {
+    pub fn complete(self, root: NodeIndex) -> UiTree {
         let cache = self.arena.iter().map(|(id, _)| (id, Default::default())).collect();
         UiTree {
             arena: self.arena,

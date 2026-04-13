@@ -17,7 +17,7 @@
 //!
 //! [`Center`]: Alignment::Center
 
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
@@ -46,7 +46,7 @@ pub struct Margin {
     pub bottom: f32,
 
     align: (Alignment, Alignment),
-    child: Option<TdIndex>,
+    child: Option<NodeIndex>,
 }
 
 impl Margin {
@@ -68,7 +68,7 @@ impl Margin {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -146,7 +146,7 @@ impl Margin {
     }
 
     /// Get the tree index of the child.
-    pub fn get_child(&self) -> Option<TdIndex> {
+    pub fn get_child(&self) -> Option<NodeIndex> {
         self.child
     }
 }
@@ -207,7 +207,7 @@ impl UiNode for Margin {
         vec![space]
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.child.into_iter().collect()
     }
 }
@@ -220,7 +220,7 @@ pub struct Minimum {
     /// The minimum size to maintain.
     pub min_override: (f32, f32),
 
-    child: Option<TdIndex>,
+    child: Option<NodeIndex>,
     align: (Alignment, Alignment),
 }
 
@@ -241,7 +241,7 @@ impl Minimum {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -263,13 +263,13 @@ impl Minimum {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
-    pub fn get_child(&self) -> Option<TdIndex> {
+    pub fn get_child(&self) -> Option<NodeIndex> {
         self.child
     }
 }
@@ -310,7 +310,7 @@ impl UiNode for Minimum {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.child.into_iter().collect()
     }
 }

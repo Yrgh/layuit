@@ -19,7 +19,7 @@
 //! [`Begin`]: Alignment::Begin
 
 use indexmap::IndexSet;
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
@@ -34,7 +34,7 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 /// [`Begin`]: Alignment::Begin
 pub struct HStack {
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
     pub spacing: f32,
 }
 
@@ -48,7 +48,7 @@ impl HStack {
     }
 
     /// Add a new child to the stack.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -74,7 +74,7 @@ impl HStack {
     }
 
     /// Add a child to the stack. The child will appear at the end.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -115,7 +115,7 @@ impl HStack {
     }
 
     /// Returns the tree index associated with a child at a given stack index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 }
@@ -170,7 +170,7 @@ impl UiNode for HStack {
         child_rects
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.children.iter().copied().collect()
     }
 }
@@ -186,7 +186,7 @@ impl UiNode for HStack {
 /// [`Begin`]: Alignment::Begin
 pub struct VStack {
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
     spacing: f32,
 }
 
@@ -200,7 +200,7 @@ impl VStack {
     }
 
     /// Add a new child to the stack.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -235,7 +235,7 @@ impl VStack {
     }
 
     /// Add a child to the stack. The child will appear at the end.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -276,7 +276,7 @@ impl VStack {
     }
 
     /// Returns the tree index associated with a child at a given stack index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 }
@@ -331,7 +331,7 @@ impl UiNode for VStack {
         child_rects
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.children.iter().copied().collect()
     }
 }

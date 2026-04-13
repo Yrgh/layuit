@@ -7,7 +7,7 @@
 
 use indexmap::IndexSet;
 
-use thunderdome::Index as TdIndex;
+use thunderdome::Index as NodeIndex;
 
 use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
@@ -21,7 +21,7 @@ pub struct Hider {
     pub hidden: bool,
 
     align: (Alignment, Alignment),
-    child: Option<TdIndex>,
+    child: Option<NodeIndex>,
 }
 
 impl Hider {
@@ -44,7 +44,7 @@ impl Hider {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -60,7 +60,7 @@ impl Hider {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
@@ -104,11 +104,11 @@ impl UiNode for Hider {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.child.into_iter().collect()
     }
 
-    fn get_visible_children(&self) -> Vec<TdIndex> {
+    fn get_visible_children(&self) -> Vec<NodeIndex> {
         if !self.hidden
             && let Some(child) = self.child
         {
@@ -128,10 +128,10 @@ impl UiNode for Hider {
 /// The minimum size of the selector is the minimum size of the selected child, or 0 if none is
 /// selected.
 pub struct Selector {
-    selected: Option<TdIndex>,
+    selected: Option<NodeIndex>,
 
     align: (Alignment, Alignment),
-    children: IndexSet<TdIndex>,
+    children: IndexSet<NodeIndex>,
 }
 
 impl Selector {
@@ -148,7 +148,7 @@ impl Selector {
     }
 
     /// Add a new child to the list. If there are no other children, the new child will be selected.
-    pub fn with_child(mut self, index: TdIndex) -> Self {
+    pub fn with_child(mut self, index: NodeIndex) -> Self {
         if self.selected.is_none() {
             self.selected = Some(index);
         }
@@ -163,7 +163,7 @@ impl Selector {
     }
 
     /// Add a child to the list.
-    pub fn add_child(&mut self, index: TdIndex) {
+    pub fn add_child(&mut self, index: NodeIndex) {
         self.children.insert(index);
     }
 
@@ -210,12 +210,12 @@ impl Selector {
     }
 
     /// Returns the tree index associated with a child at a given list index.
-    pub fn get_child_index(&self, index: usize) -> Option<TdIndex> {
+    pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
         self.children.get_index(index).copied()
     }
 
     /// Returns the tree index of the currently-selected node.
-    pub fn get_selected(&self) -> Option<TdIndex> {
+    pub fn get_selected(&self) -> Option<NodeIndex> {
         self.selected
     }
 
@@ -225,7 +225,7 @@ impl Selector {
     }
 
     /// Sets the selected node to the given tree index.
-    pub fn set_selected(&mut self, child: TdIndex) {
+    pub fn set_selected(&mut self, child: NodeIndex) {
         self.selected = Some(child)
     }
 
@@ -274,11 +274,11 @@ impl UiNode for Selector {
         }
     }
 
-    fn get_children(&self) -> Vec<TdIndex> {
+    fn get_children(&self) -> Vec<NodeIndex> {
         self.children.iter().copied().collect()
     }
 
-    fn get_visible_children(&self) -> Vec<TdIndex> {
+    fn get_visible_children(&self) -> Vec<NodeIndex> {
         self.selected.iter().copied().collect()
     }
 }
