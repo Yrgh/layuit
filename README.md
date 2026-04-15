@@ -17,6 +17,9 @@ and more readable.
   children.
 - **[`Rect`]**: A rectangle in space, represented with `f32` coordinates.
 - **[`Alignment`]**: An alignment primarily used for determining node placement.
+- **[`NodeIndex`]**: A tree index, used to access the [`UiNode`]s in a [`UiTree`], but does not
+  have "ownership".
+- **[`OwnedIndex`]**: A non-duplicable tree index, used to refer to children, with "ownership".
 
 ## Layout process
 
@@ -50,6 +53,8 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 - [`VEqual`] - Vertical arrangement with each child getting equal space
 - [`Grid`] - 2D grid of children
 - [`Clamp`] - Constrains a child to a maximum size.
+- [`HSplit3`] - Horizontal split between two children, with a third child separating the two.
+ - [`VSplit3`] - Vertical split between two children, with a third child separating the two.
 
 ## External dependencies
 
@@ -58,7 +63,8 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 
 [`Rect`]: https://docs.rs/layuit/latest/layuit/struct.Rect.html
 [`Alignment`]: https://docs.rs/layuit/latest/layuit/enum.Alignment.html
-[`NodeCache`]: https://docs.rs/layuit/latest/layuit/struct.NodeCache.html
+[`NodeIndex`]: https://docs.rs/layuit/latest/layuit/struct.NodeIndex.html
+[`OwnedIndex`]: https://docs.rs/layuit/latest/layuit/struct.OwnedIndex.html
 [`UiTree`]: https://docs.rs/layuit/latest/layuit/struct.UiTree.html
 [`UiTree::calculate_layout`]: https://docs.rs/layuit/latest/layuit/struct.UiTree.html#method.calculate_layout
 [`NodeVisitor`]: https://docs.rs/layuit/latest/layuit/trait.NodeVisitor.html
@@ -82,6 +88,8 @@ Layout runs in two passes, when [`UiTree::calculate_layout`] is called:
 [`VEqual`]: https://docs.rs/layuit/latest/layuit/grid/struct.VEqual.html
 [`Grid`]: https://docs.rs/layuit/latest/layuit/grid/struct.Grid.html
 [`Clamp`]: https://docs.rs/layuit/latest/layuit/limit/struct.Clamp.html
+[`HSplit3`]: https://docs.rs/layuit/latest/layuit/split3/struct.HSplit3.html
+[`VSplit3`]: https://docs.rs/layuit/latest/layuit/split3/struct`VSplit3.html
 [`ui!`]: https://docs.rs/layuit/latest/layuit/macro.ui.html
 
 [`thunderdome`]: https://crates.io/crates/thunderdome

@@ -3,30 +3,26 @@
 //! [`Overlap`] is a container that arranges its children independently on top of each other. Each
 //! child is aligned to the space of the entire container and no restrictions are applied.
 
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 use indexmap::IndexSet;
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
 /// A node that contains many children which are stacked on top of each other and do not interact.
 pub struct Overlap {
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
+    children: IndexSet<OwnedIndex>,
 }
 
 impl Overlap {
-    /// Create an empty `Overlap` with no child and alignment ([`Begin`], [`Begin`]).
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Create an empty `Overlap` with no child and default alignment.
     pub fn new() -> Self {
         Self {
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             children: IndexSet::new(),
         }
     }
 
     /// Add a new child to the list.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -38,7 +34,7 @@ impl Overlap {
     }
 
     /// Add a child to the list. The child will appear on top (last-visited).
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -62,7 +58,7 @@ impl Overlap {
             return false;
         };
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -80,7 +76,7 @@ impl Overlap {
 
     /// Returns the tree index associated with a child at a given list index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 }
 
@@ -107,7 +103,9 @@ impl UiNode for Overlap {
         let mut w = 0.0f32;
         let mut h = 0.0f32;
         for child in &self.children {
-            let child = tree.get_cache(*child).expect("Child not in cache");
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (cw, ch) = child.min_size;
             w = w.max(cw);
             h = h.max(ch);
@@ -120,8 +118,10 @@ impl UiNode for Overlap {
         let mut child_rects = Vec::with_capacity(self.children.len());
 
         for child in &self.children {
-            let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.get_node(*child).expect("Child not in arena");
+            let child = child.shareable();
+
+            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+            let child = tree.get_node(child).expect("Child not in arena");
 
             let space = cache.rect.align(child.get_align(), child_min);
             child_rects.push(space);

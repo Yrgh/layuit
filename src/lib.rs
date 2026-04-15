@@ -1,7 +1,8 @@
 //! # Layuit
 //!
 //! A renderer-agnostic UI layout system. Layuit handles computing the size and position of various
-//! [`UiNode`]s in a [`UiTree`]. Layuit does not handle rendering, but provides tools for doing so.
+//! [`UiNode`]s in a [`UiTree`]. Layuit does not handle rendering, but provides tools to define a
+//! renderer.
 //!
 //! Layuit provides several organizational nodes such as [`HStack`] and [`Margin`], but allows users
 //! to create their own nodes.
@@ -12,10 +13,11 @@
 //!   computation and access.
 //! - **[`UiNode`]**: A trait implemented by all UI nodes, containing alignment and any number of
 //!   children.
-//! - **[`NodeCache`]**: The cached layout information for a node, produced by
-//!   [`UiTree::calculate_layout`].
 //! - **[`Rect`]**: A rectangle in space, represented with `f32` coordinates.
 //! - **[`Alignment`]**: An alignment primarily used for determining node placement.
+//! - **[`NodeIndex`]**: A tree index, used to access the [`UiNode`]s in a [`UiTree`], but does not
+//!   have "ownership".
+//! - **[`OwnedIndex`]**: A non-duplicable tree index, used to refer to children, with "ownership".
 //!
 //! ## Layout process
 //!
@@ -52,6 +54,9 @@
 //! ensuring each node's minimum size is enforced. This can easily become a problem if the space
 //! required by the entire tree is smaller than the one provided to [`UiTree::calculate_layout`].
 //!
+//! **No threads or async.** Due to using `dyn UiNode` and [`UiNode`] not requiring `Send + Sync`,
+//! [`UiTree`] and [`PartialTree`] are `!Send + !Sync`.
+//!
 //! ## Implementing custom nodes
 //!
 //! Custom nodes are essential to using Layuit. Without them, no meaningful UI can be rendered.
@@ -70,7 +75,7 @@
 //! Probably the most important custom node is the `Label`:
 //!
 //! ```rust
-//! use layuit::{Alignment, NodeCache, Rect, UiTree, UiNode};
+//! use layuit::{Alignment, UiTree, UiNode};
 //!
 //! pub struct Label {
 //!     text: String,
@@ -108,14 +113,11 @@
 //! by the macro to them.
 //!
 //! ```rust
-//! use layuit::UiTree;
 //! use layuit::padding::{Spacer, Minimum};
-//! use layuit::stacks::HStack;
-//! use layuit::proportion::HSplit;
-//! use thunderdome::Index;
+//! use layuit::stack::HStack;
 //!
 //! let spacer3;
-//! let (node_index, mut tree) = layuit::ui!(
+//! let mut tree = layuit::ui!(
 //!     %%,
 //!     +|+ HStack::new() => [
 //!         -|< Spacer::sized((10.0, 10.0)),
@@ -127,14 +129,12 @@
 //! );
 //!
 //! tree
-//!     .get_node_mut(spacer3)
-//!     .unwrap()
-//!     .downcast_mut::<Spacer>()
+//!     .get_cast_mut::<Spacer>(spacer3)
 //!     .unwrap()
 //!     .set_size((20.0, 20.0));
 //!
 //!
-//! // HStack (Full, Full) = node_index / tree root
+//! // HStack (Full, Full)
 //! // ├─ Spacer (N/A, Begin)
 //! // ├─ Minimum (N/A, Center)
 //! // │  └─ Spacer (Center, Center)
@@ -167,8 +167,8 @@
 //!
 //! [`calculate_min_size`]: UiNode::calculate_min_size
 //! [`calculate_rects`]: UiNode::calculate_rects
-//! [`HStack`]: stacks::HStack
-//! [`VStack`]: stacks::VStack
+//! [`HStack`]: stack::HStack
+//! [`VStack`]: stack::VStack
 //! [`Overlap`]: overlap::Overlap
 //! [`Margin`]: padding::Margin
 //! [`Minimum`]: padding::Minimum
@@ -186,8 +186,10 @@
 //! [`Clamp`]: limit::Clamp
 //! [`HSplit3`]: split3::HSplit3
 //! [`VSplit3`]: split3::VSplit3
+//!
+//! [`mpsc`]: https://doc.rust-lang.org/nightly/std/sync/mpsc/index.html
 
-#![warn(clippy::all)]
+#![warn(clippy::all, missing_docs)]
 #![deny(clippy::unwrap_used)]
 
 use std::collections::{HashMap, VecDeque};
@@ -202,44 +204,118 @@ pub mod padding;
 pub mod prelude;
 pub mod proportion;
 pub mod split3;
-pub mod stacks;
+pub mod stack;
 pub mod visibility;
 
-pub use thunderdome::Index as NodeIndex;
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+/// An index to a node in a tree.
+pub struct NodeIndex(thunderdome::Index);
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+/// An index to a node in a tree, with the caveat that it represents a node not already in the
+/// hierarchy.
+///
+/// To prevent tree malformation, this index is produced by [`UiTree::add_node`] and cannot be
+/// duplicated.
+pub struct OwnedIndex(thunderdome::Index);
+
+impl OwnedIndex {
+    /// Clones the index as a [`NodeIndex`].
+    pub fn shareable(&self) -> NodeIndex {
+        NodeIndex(self.0)
+    }
+}
+
+impl From<OwnedIndex> for NodeIndex {
+    fn from(value: OwnedIndex) -> Self {
+        NodeIndex(value.0)
+    }
+}
+
+impl From<&OwnedIndex> for NodeIndex {
+    fn from(value: &OwnedIndex) -> Self {
+        NodeIndex(value.0)
+    }
+}
+
+impl std::borrow::Borrow<NodeIndex> for OwnedIndex {
+    fn borrow(&self) -> &NodeIndex {
+        // # Safety
+        // repr(transparent) used, and same definition as NodeIndex
+        unsafe { std::mem::transmute(self) }
+    }
+}
+
+impl From<thunderdome::Index> for NodeIndex {
+    fn from(value: thunderdome::Index) -> Self {
+        NodeIndex(value)
+    }
+}
+
+impl From<NodeIndex> for thunderdome::Index {
+    fn from(value: NodeIndex) -> thunderdome::Index {
+        value.0
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
-/// An alignment of any sort, for example determining node placement.
+/// An alignment of a node within its parent.
 ///
 /// `Begin`, `Center`, and `End` cause a node to shrink to its minimum size in to that position.
 /// `Full` causes a node to occupy all space it is given. For example, to shrink to the left-middle,
 /// use (`Begin`, `Center`). To fill horizontally and shrink down, use (`Full`, `End`).
+///
+/// The default is `Full`.
 pub enum Alignment {
-    #[default]
-    /// The left or top.
+    /// Shrink to the left or top.
     Begin,
+    /// Shrink to the center.
     Center,
+    /// Shrink to the right or bottom.
     End,
+    #[default]
+    /// Grow to the entire available space.
     Full,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
-/// Horizontal or vertical anchoring. While very similar to [`Alignment`], `Anchor` represents
-/// shrinking only, and has no `Full` variant.
+/// Shrinking direction of a constrained rectangle.
 ///
-/// It is also noteworthy that the default is `Center`, not `Alignment::Begin`.
+/// While similar to [`Alignment`], `Anchor` does not support [`Full`], since that would be growing
+/// instead of shrinking.
+///
+/// It is also noteworthy that the default is [`Center`], not [`Alignment::Begin`].
+///
+/// [`Alignment`]: Alignment
+/// [`Center`]: Anchor::Center
+/// [`Full`]: Alignment::Full
 pub enum Anchor {
+    /// Top left
     Begin,
     #[default]
+    /// Center
     Center,
+    /// Bottom right
     End,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
-/// A rectangle in space, represented with `f32` coordinates.
+/// A rectangle in space, represented with `f32` coordinates, representing unitless position and
+/// size.
+///
+/// A rectangle is "valid" if *both* its width and height are non-negative. 0 is valid. A rectangle
+/// is "empty" if *either* its width or height is 0. An invalid rectangle may not be empty. A
+/// rectangle is "zero" if *both* its width and height are 0.
 pub struct Rect {
+    /// The x position of the top left corner.
     pub x: f32,
+    /// The y position of the top left corner.
     pub y: f32,
+    /// The width of the rectangle.
     pub w: f32,
+    /// The height of the rectangle.
     pub h: f32,
 }
 
@@ -260,55 +336,67 @@ impl Rect {
         }
     }
 
-    /// Returns `false` if either the width or height is negative. Otherwise, returns `true`.
+    /// Returns `false` if *either* the width or height is negative. Otherwise, returns `true`.
     pub fn is_valid(&self) -> bool {
         self.w >= 0.0 && self.h >= 0.0
     }
 
-    /// Returns `true` if the rectangle has no width *or* no height.
+    /// Returns `true` if the rectangle has zero width *or* zero height.
     pub fn is_empty(&self) -> bool {
         self.w == 0.0 || self.h == 0.0
     }
 
-    /// Returns `true` if the rectangle has no width *and* no height.
+    /// Returns `true` if the rectangle has zero width *and* zero height.
     pub fn is_zero(&self) -> bool {
         self.w == 0.0 && self.h == 0.0
     }
 
-    /// Shrink the width of the rectangle by the given amount toward the left.
+    /// Returns the width and height of the rectangle.
+    pub fn get_size(&self) -> (f32, f32) {
+        (self.w, self.h)
+    }
+
+    /// Set the width and height of the rectangle.
+    pub fn with_size(mut self, w: f32, h: f32) -> Self {
+        self.w = w;
+        self.h = h;
+        self
+    }
+
+    /// Shrink the width of the rectangle by the given amount toward the **left**.
     pub fn shrink_begin_x(mut self, amount: f32) -> Self {
         self.w -= amount;
         self
     }
 
-    /// Shrink the width of the rectangle by the given amount toward the right.
+    /// Shrink the width of the rectangle by the given amount toward the **right**.
     pub fn shrink_end_x(mut self, amount: f32) -> Self {
         self.w -= amount;
         self.x += amount;
         self
     }
 
-    /// Shrink the width of the rectangle by the given amount toward the center.
+    /// Shrink the **width** of the rectangle by the given amount toward the **center**.
     pub fn shrink_center_x(mut self, amount: f32) -> Self {
         self.w -= amount;
         self.x += amount * 0.5;
         self
     }
 
-    /// Shrink the height of the rectangle by the given amount toward the top.
+    /// Shrink the height of the rectangle by the given amount toward the **top**.
     pub fn shrink_begin_y(mut self, amount: f32) -> Self {
         self.h -= amount;
         self
     }
 
-    /// Shrink the height of the rectangle by the given amount toward the bottom.
+    /// Shrink the height of the rectangle by the given amount toward the **bottom**.
     pub fn shrink_end_y(mut self, amount: f32) -> Self {
         self.h -= amount;
         self.y += amount;
         self
     }
 
-    /// Shrink the height of the rectangle by the given amount toward the middle.
+    /// Shrink the **height** of the rectangle by the given amount toward the **middle**.
     pub fn shrink_center_y(mut self, amount: f32) -> Self {
         self.h -= amount;
         self.y += amount * 0.5;
@@ -316,6 +404,12 @@ impl Rect {
     }
 
     /// Create a contained rectangle aligned within `self`.
+    ///
+    /// See [`Alignment`] for what each alignment does.
+    ///
+    /// If self` rectangle is smaller than `min` and a shrinking mode is used, the contained
+    /// rectangle will *grow* in the opposite direction it would have (eg. End would grow to the
+    /// top-left).
     ///
     /// Example:
     ///
@@ -349,7 +443,13 @@ impl Rect {
         }
     }
 
-    /// Similar to [`align`], but based on [`Anchor`] instead of [`Alignment`].
+    /// Create a contained rectangle aligned within `self`, always shrinking to the given size.
+    ///
+    /// Nearly identical behavior to [`align`], but uses [`Anchor`] instead of [`Alignment`],
+    /// preventing use of [`Alignment::Full`].
+    ///
+    /// If self` rectangle is smaller than `min`, the contained rectangle will *grow* in the
+    /// opposite direction it would have (eg. End would grow to the top-left).
     ///
     /// [`align`]: Self::align
     pub fn anchor(mut self, anchor: (Anchor, Anchor), size: (f32, f32)) -> Self {
@@ -366,7 +466,27 @@ impl Rect {
         }
     }
 
+    /// Returns `true` if `point` is contained within `self`. It is inclusive of the begin edges,
+    /// but exclusive of the end edges.
+    pub fn contains(&self, point: (f32, f32)) -> bool {
+        point.0 >= self.x
+            && point.0 < self.x + self.w
+            && point.1 >= self.y
+            && point.1 < self.y + self.h
+    }
+
+    /// Returns `true` if `rect` is contained entirely within `self`.
+    pub fn contains_rect(&self, rect: Rect) -> bool {
+        rect.x >= self.x
+            && rect.x + rect.w <= self.x + self.w
+            && rect.y >= self.y
+            && rect.y + rect.h <= self.y + self.h
+    }
+
     /// Returns the area included by both `self` and `other`.
+    ///
+    /// Always returns a valid rectangle (both >=0), but it may be empty (either =0) if the two
+    /// rectangles do not overlap.
     pub fn intersect(self, other: Self) -> Self {
         let x1 = self.x.max(other.x);
         let y1 = self.y.max(other.y);
@@ -381,7 +501,9 @@ impl Rect {
 #[derive(Copy, Clone, Debug, Default)]
 /// Cached layout information for a node.
 pub struct NodeCache {
+    /// The stored minimum size of the node.
     pub min_size: (f32, f32),
+    /// The stored rect of the node.
     pub rect: Rect,
 }
 
@@ -460,20 +582,29 @@ pub trait UiWalker {
     fn leave(&mut self, node: &mut dyn UiNode, rect: Rect, index: NodeIndex);
 }
 
+/// Walks a UI tree, but only in cases where a point is within the node's rect.
+pub trait PointTester {
+    /// Called on every visited node. Should return `true` to cancel the walk.
+    fn accept(&self, p: (f32, f32), node: &dyn UiNode, rect: Rect, index: NodeIndex) -> bool;
+}
+
 #[derive(Default)]
-pub struct CalculateLayoutConfig {
+/// Settings for [`calculate_layout_ex`]
+///
+/// [`calculate_layout_ex`]: UiTree::calculate_layout_ex
+pub struct LayoutConfig {
     /// If `true`, applies the root node's alignment instead of ignoring it.
     pub align_root: bool,
     /// If `true`, ensures that the minimum size of the root node is met, even if that would exceed
     /// the provided rect.
-    pub force_good: bool
+    pub force_good: bool,
 }
 
 /// A tree of UI nodes, stored as an arena.
 pub struct UiTree {
-    root: NodeIndex,
+    root: thunderdome::Index,
     arena: Arena<Box<dyn UiNode>>,
-    cache: HashMap<NodeIndex, NodeCache>,
+    cache: HashMap<thunderdome::Index, NodeCache>,
 }
 
 impl UiTree {
@@ -489,54 +620,60 @@ impl UiTree {
     }
 
     /// Add a node to the arena.
-    pub fn add_node(&mut self, node: impl UiNode) -> NodeIndex {
+    ///
+    /// This produces an [`OwnedIndex`] that is used to ensure exactly one node holds parental
+    /// "ownership" of the node in the hierarchy.
+    pub fn add_node(&mut self, node: impl UiNode) -> OwnedIndex {
         let index = self.arena.insert(Box::new(node) as Box<dyn UiNode>);
         self.cache.insert(index, Default::default());
-        index
+        OwnedIndex(index)
     }
 
     /// Remove a node and all of its children from the arena.
     ///
     /// # Panics
-    /// If the index is invalid or the tree is malformed.
-    ///
-    /// Also panics if the root node is removed.
-    pub fn remove_node(&mut self, index: NodeIndex) {
-        assert_ne!(index, self.root, "Root node cannot be removed");
+    /// If the root node is removed.
+    pub fn remove_node(&mut self, index: OwnedIndex) {
+        assert_ne!(index.0, self.root, "Root node cannot be removed");
 
-        let mut queue: VecDeque<_> = self.arena[index].get_children().into();
+        let mut queue: VecDeque<_> = self.arena[index.0].get_children().into();
         while let Some(child) = queue.pop_front() {
-            queue.extend(self.arena[child].get_children());
-            self.arena.remove(child);
-            self.cache.remove(&child);
+            queue.extend(self.arena[child.0].get_children());
+            self.arena.remove(child.0);
+            self.cache.remove(&child.0);
         }
-        self.arena.remove(index);
-        self.cache.remove(&index);
+        self.arena.remove(index.0);
+        self.cache.remove(&index.0);
     }
 
     /// Get a reference to the cached layout information for a node.
     pub fn get_cache(&self, index: NodeIndex) -> Option<&NodeCache> {
-        self.cache.get(&index)
+        self.cache.get(&index.0)
     }
 
     /// Get a reference to a node.
     pub fn get_node(&self, index: NodeIndex) -> Option<&dyn UiNode> {
-        self.arena.get(index).map(|node| &**node)
+        self.arena.get(index.0).map(|node| &**node)
     }
 
     /// Get a mutable reference to a node.
     pub fn get_node_mut(&mut self, index: NodeIndex) -> Option<&mut dyn UiNode> {
-        self.arena.get_mut(index).map(|node| &mut **node)
+        self.arena.get_mut(index.0).map(|node| &mut **node)
     }
 
-    /// Get a reference to the root node.
-    pub fn get_root(&self) -> &dyn UiNode {
-        &**self.arena.get(self.root).expect("Root not valid")
+    /// Get a reference to a node, performing a downcast at the same time.
+    pub fn get_cast<T: UiNode>(&self, index: NodeIndex) -> Option<&T> {
+        self.get_node(index).and_then(|node| node.downcast_ref())
     }
 
-    /// Get a mutable reference to the root node.
-    pub fn get_root_mut(&mut self) -> &mut dyn UiNode {
-        &mut **self.arena.get_mut(self.root).expect("Root not valid")
+    /// Get a mutable reference to a node, performing a downcast at the same time.
+    pub fn get_cast_mut<T: UiNode>(&mut self, index: NodeIndex) -> Option<&mut T> {
+        self.get_node_mut(index).and_then(|node| node.downcast_mut())
+    }
+
+    /// Return the index of the root node.
+    pub fn root_index(&self) -> NodeIndex {
+        NodeIndex(self.root)
     }
 
     /// Calculate the layout information for all nodes in the tree. This is equivalent to calling
@@ -548,9 +685,6 @@ impl UiTree {
     ///
     /// Nodes that are not visible will be given a minimum size of `(0, 0)`.
     ///
-    /// # Panics
-    /// If the tree is malformed
-    /// 
     /// [`calculate_layout_ex`]: Self::calculate_layout_ex
     /// [`Full`]: Alignment::Full
     pub fn calculate_layout(&mut self, root_rect: Rect) -> bool {
@@ -559,16 +693,13 @@ impl UiTree {
 
     /// Calculate the layout information for all nodes in the tree, with additional control of the
     /// process.
-    /// 
+    ///
     /// If `force_good` is `true`, ensures that the minimum size of the root node is met, even if
     /// that would exceed the provided rect. If `false`, returns whether the minimum size of the
     /// root node is met.
-    /// 
+    ///
     /// If `align_root` is `true`, applies the root node's alignment instead of ignoring it.
-    /// 
-    /// # Panics
-    /// If the tree is malformed
-    pub fn calculate_layout_ex(&mut self, root_rect: Rect, config: CalculateLayoutConfig) -> bool {
+    pub fn calculate_layout_ex(&mut self, root_rect: Rect, config: LayoutConfig) -> bool {
         // Clear cache
         for v in self.cache.values_mut() {
             *v = Default::default();
@@ -580,7 +711,12 @@ impl UiTree {
         let mut min_stack = Vec::new();
         while let Some(v) = visit_stack.pop() {
             min_stack.push(v);
-            visit_stack.extend(self.arena[v].get_visible_children());
+            visit_stack.extend(
+                self.arena[v]
+                    .get_visible_children()
+                    .into_iter()
+                    .map(|v| v.0),
+            );
         }
 
         for v in min_stack.iter().rev() {
@@ -590,7 +726,15 @@ impl UiTree {
 
         let (is_good, root_rect) = if config.force_good {
             let root_min = self.cache[&self.root].min_size;
-            (true, Rect::new(0.0, 0.0, root_min.0.max(root_rect.w), root_min.1.max(root_rect.h)))
+            (
+                true,
+                Rect::new(
+                    0.0,
+                    0.0,
+                    root_min.0.max(root_rect.w),
+                    root_min.1.max(root_rect.h),
+                ),
+            )
         } else {
             let is_good = root_rect.w >= self.cache[&self.root].min_size.0
                 && root_rect.h >= self.cache[&self.root].min_size.1;
@@ -613,7 +757,7 @@ impl UiTree {
         for v in min_stack {
             let rects = self.arena[v].calculate_rects(&self.cache[&v], self);
             for (child, rect) in self.arena[v].get_children().iter().zip(rects) {
-                self.cache.entry(*child).or_default().rect = rect;
+                self.cache.entry(child.0).or_default().rect = rect;
             }
         }
 
@@ -626,8 +770,8 @@ impl UiTree {
     /// If `use_visible` is `true`, only nodes that are visible will be visited.
     ///
     /// [`walk_node`]: Self::walk_node
-    pub fn walk_root(&mut self, walker: &mut impl UiWalker, use_visible: bool) {
-        self.walk_node(self.root, walker, use_visible);
+    pub fn walk_tree(&mut self, walker: &mut impl UiWalker, use_visible: bool) {
+        self.walk_node(NodeIndex(self.root), walker, use_visible);
     }
 
     /// Walks a single node and its children, with the given walker.
@@ -645,34 +789,76 @@ impl UiTree {
     ///
     /// [`enter`]: UiWalker::enter
     /// [`leave`]: UiWalker::leave
-    pub fn walk_node(
-        &mut self,
-        index: NodeIndex,
-        walker: &mut impl UiWalker,
-        use_visible: bool
-    ) {
-        let rect = self.cache[&index].rect;
-        walker.enter(self.arena[index].as_mut(), rect, index);
+    pub fn walk_node(&mut self, index: NodeIndex, walker: &mut impl UiWalker, use_visible: bool) {
+        let rect = self.cache[&index.0].rect;
+        walker.enter(self.arena[index.0].as_mut(), rect, index);
 
         let children = if use_visible {
-            self.arena[index].get_visible_children()
+            self.arena[index.0].get_visible_children()
         } else {
-            self.arena[index].get_children()
+            self.arena[index.0].get_children()
         };
         for child in children {
             self.walk_node(child, walker, use_visible);
         }
 
-        walker.leave(self.arena[index].as_mut(), rect, index);
+        walker.leave(self.arena[index.0].as_mut(), rect, index);
+    }
+
+    /// Walks the tree from the root, whitelisting nodes where `point` is contained within the
+    /// node's rect.
+    ///
+    /// Only visible nodes will be visited. Nodes that do not contain `point` will not be visited.
+    pub fn point_test(&self, point: (f32, f32), tester: &mut impl PointTester) {
+        self.point_test_int(self.root, point, tester);
+    }
+
+    /// Walks a single node and its children, whitelisting nodes where `point` is contained within
+    /// the node's rect.
+    ///
+    /// Only visible nodes will be visited. Nodes that do not contain `point` will not be visited.
+    pub fn point_test_node(
+        &self,
+        index: NodeIndex,
+        point: (f32, f32),
+        tester: &mut impl PointTester,
+    ) {
+        self.point_test_int(index.0, point, tester);
+    }
+
+    fn point_test_int(
+        &self,
+        index: thunderdome::Index,
+        point: (f32, f32),
+        tester: &mut impl PointTester,
+    ) -> bool {
+        let rect = self.cache[&index].rect;
+        if !rect.contains(point) {
+            return false;
+        }
+
+        if tester.accept(point, self.arena[index].as_ref(), rect, NodeIndex(index)) {
+            return true;
+        }
+
+        let children = self.arena[index].get_children();
+
+        for child in children.into_iter() {
+            if self.point_test_int(child.0, point, tester) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
 /// A [`UiTree`] that does not have a full tree structure assigned.
-/// 
+///
 /// The API for this struct only contains a method to add a node to the tree and a method to
 /// complete the tree. This comes at the benefit of not requiring a root node at
 /// construction.
-/// 
+///
 /// It is used internally by the [`ui!`] macro, but can also be used manually.
 pub struct PartialTree {
     arena: Arena<Box<dyn UiNode>>,
@@ -687,23 +873,24 @@ impl PartialTree {
     }
 
     /// Adds a node to the tree and returns its index.
-    pub fn add_node(&mut self, node: impl UiNode) -> NodeIndex {
-        self.arena.insert(Box::new(node) as Box<dyn UiNode>)
+    pub fn add_node(&mut self, node: impl UiNode) -> OwnedIndex {
+        OwnedIndex(self.arena.insert(Box::new(node) as Box<dyn UiNode>))
     }
 
-    /// Completes a partial tree into a full UI tree.
+    /// Converts a partial tree into a [`UiTree`], using the given root node.
     ///
-    /// Returns a new UI tree with the given root node and the arena and cache from `self`.
-    /// 
-    /// Indices are preserved.
+    /// The root node is taken as an [`OwnedIndex`], since it cannot have a parent.
     ///
-    /// # Panics
-    /// If the tree is malformed, or if the root node is not present in the arena.
-    pub fn complete(self, root: NodeIndex) -> UiTree {
-        let cache = self.arena.iter().map(|(id, _)| (id, Default::default())).collect();
+    /// Existing [`NodeIndex`]es are not invalidated.
+    pub fn complete(self, root: OwnedIndex) -> UiTree {
+        let cache = self
+            .arena
+            .iter()
+            .map(|(id, _)| (id, Default::default()))
+            .collect();
         UiTree {
             arena: self.arena,
-            root,
+            root: root.0,
             cache,
         }
     }
@@ -718,12 +905,35 @@ impl Default for PartialTree {
 #[macro_export]
 /// A macro for making the process of creating a UI subtree easier.
 ///
-/// The macro takes a mutable reference to the tree, or `%%`, signifying to create one, and a base
-/// node, and returns the index of the base node in the tree. If a tree is created, the index is
-/// stored as the first element of a tuple and the tree is the second.
+/// # Arguments
 ///
-/// Each node is represented by two alignment symbols, separated by a `|`, a constructor for the
-/// node, and an optional list of children, contained in square brackets after `=>`.
+/// The macro takes a tree and a node, recursively appending nodes to the tree. **The returned value
+/// is dependent on what type of tree argument is passed.**
+///
+/// ### Tree
+///
+/// The tree can be either:
+///
+/// - `%%`, which creates a new [`UiTree`] and returns it.
+///
+/// - `%%!`, which creates a new [`PartialTree`] and returns a tuple containing it and the owned
+///   index of the new node.
+///
+/// - Or a mutable reference to a tree, which will return the owned index of the new node. The tree
+///   can be either a [`UiTree`] or a [`PartialTree`].
+///
+/// ### Node
+///
+/// Nodes are recursively defined by constructing them, modifying them, and adding them to the tree.
+///
+/// Each node is represented by an optional assignment; two alignment symbols, separated by a `|`; a
+/// constructor for the node; and an optional list of children, contained in square brackets after
+/// `=>`.
+///
+/// Ex `binding = +|+ HStack::new() => [ ]`
+///
+/// The assignment is a *name* followed by `=`, not an expression. The variable with the
+/// corresponding name will be assigned the [`NodeIndex`] of the created node.
 ///
 /// The alignment characters are orderer horizontal then vertical, with the following allowed:
 ///
@@ -735,16 +945,16 @@ impl Default for PartialTree {
 ///
 /// `>` - [`End`]
 ///
-/// Additionally, before a node's alignment, you may write `name =` to assign the index of the node
-/// to a variable.
+/// You can also replace a node with `#expr` to use a node that is already present in the tree. It
+/// expects a [`OwnedIndex`], not a [`NodeIndex`].
 ///
-/// ## Example usage
+/// # Example usage
 /// ```rust
 /// use layuit::padding::{Spacer, Minimum};
-/// use layuit::stacks::HStack;
-/// 
+/// use layuit::stack::HStack;
+///
 /// let minimum;
-/// let (_, tree) = layuit::ui!(
+/// let tree = layuit::ui!(
 ///     %%,
 ///     +|+ HStack::new() => [
 ///         -|< Spacer::sized((10.0, 10.0)),
@@ -776,23 +986,27 @@ macro_rules! ui {
         {
             let mut tree = $crate::PartialTree::new();
             let root = $crate::ui!(@@_node &mut tree;; $($node)*);
-            (root, tree.complete(root))
+            tree.complete(root)
         }
     };
 
-    ($($random:tt)*, $($node:tt)*) => {
-        compile_error!(concat!(
-            "Expected either a mutable reference to a tree or `%%`, found `",
-            stringify!($($random)*),
-            "` where the tree should have been."
-        ));
+    (%%!, $($node:tt)*) => {
+        {
+            let mut tree = $crate::PartialTree::new();
+            let root = $crate::ui!(@@_node &mut tree;; $($node)*);
+            (tree, root)
+        }
+    };
+
+    (@@_node $tree:expr;; #$expr:expr) => {
+        $expr
     };
 
     // With binding, no children
     (@@_node $tree:expr;; $binding:ident = $ha:tt | $va:tt $node:expr) => {
         {
             let __node_idx = $tree.add_node($crate::ui!(@@_align $ha | $va $node));
-            $binding = __node_idx;
+            $binding = __node_idx.shareable();
             __node_idx
         }
     };
@@ -807,7 +1021,7 @@ macro_rules! ui {
                 => [ $($child)* ]
             );
             let __node_idx = $tree.add_node(__ui_node);
-            $binding = __node_idx;
+            $binding = __node_idx.shareable();
             __node_idx
         }
     };
@@ -929,23 +1143,30 @@ macro_rules! ui {
         compile_error!("Invalid alignment. Only `<`, `-`, `>`, and `+` are allowed.")
     };
 
+    (@@_node $tree:expr;; $node:expr $(=> [ $($child:tt)* ])?) => {
+        compile_error!(
+            "Nodes must have an alignment, represented by two of `<`, `-`, `>`, and `+`, \
+            separated by a `|`"
+        )
+    };
+
     (@@_node $tree:expr;; $($tt:tt)*) => {
         compile_error!(concat!(
             "Invalid node syntax. A node should have an optional assignment, two alignment \
             characters, separated by a pipe, and a node expression, optionally followed by \
-            a fat arrow and children in square brackets.\nExample:\n\
-            `target = -|< Node::new() => [ ]`\nFound: `",
+            a fat arrow and children in square brackets.\n\nExample:\n\
+            `target = -|< Node::new() => [ ]`\n\nFound: `",
             $(stringify!($tt),)*
             "`."
         ))
     };
 
-    (@@_child $tree:expr;; $node:expr => [ $($tt:tt)* ]) => {
-        compile_error!(
-            "Invalid child node syntax. A node should have an optional assignment, two alignment \
-            characters, separated by a pipe, and a node expression, optionally followed by \
-            a fat arrow and children in square brackets."
-        )
+    ($($random:tt)*, $($node:tt)*) => {
+        compile_error!(concat!(
+            "Expected either a mutable reference to a tree, `%%`, or `%%!`, found `",
+            stringify!($($random)*),
+            "` where the tree should have been."
+        ));
     };
 
     ($($tt:tt)*) => {
@@ -955,4 +1176,53 @@ macro_rules! ui {
             "`."
         ))
     };
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn rect_intersect1() {
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let r2 = Rect::new(5.0, 0.0, 10.0, 10.0);
+
+        assert_eq!(
+            r1.intersect(r2),
+            Rect::new(5.0, 0.0, 5.0, 10.0)
+        );
+    }
+
+    #[test]
+    fn valid_tree() {
+        let root;
+        let sep;
+        let mut tree = ui!(
+            %%,
+            root = +|+ stack::HStack::new() => [
+                -|> split3::HSplit3::new() => [
+                    <|+ padding::Spacer::sized((10.0, 5.0)),
+                    sep = -|+ padding::Spacer::sized((1.0, 10.0)),
+                    >|+ padding::Spacer::sized((10.0, 5.0)),
+                ],
+                -|< padding::Spacer::sized((10.0, 10.0)),
+            ]
+        );
+
+        tree
+            .get_cast_mut::<stack::HStack>(root)
+            .unwrap()
+            .spacing = 10.0;
+
+        assert_eq!(
+            tree
+                .get_cast::<padding::Spacer>(sep)
+                .unwrap()
+                .get_size(),
+            (1.0, 10.0)
+        )
+    }
+
+
 }

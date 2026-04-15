@@ -11,9 +11,7 @@
 //!
 //! [`Minimum`]: crate::padding::Minimum
 
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 
 /// Allows a child to outgrow its parent and be clipped to the parent's bounds.
 ///
@@ -26,11 +24,10 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 ///
 /// Once the child is added, it cannot be removed.
 pub struct Clip {
-    /// The offset to apply to the child if it exceeds this node's bounds.
-    pub offset: (f32, f32),
+    offset: (f32, f32),
 
     align: (Alignment, Alignment),
-    child: Option<NodeIndex>,
+    child: Option<OwnedIndex>,
 }
 
 impl Clip {
@@ -38,7 +35,7 @@ impl Clip {
     pub fn new() -> Self {
         Self {
             offset: (0.0, 0.0),
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             child: None,
         }
     }
@@ -47,7 +44,7 @@ impl Clip {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -85,18 +82,23 @@ impl Clip {
         self.offset = offset;
     }
 
+    /// Get the horizontal and vertical offset.
+    pub fn get_offset(&self) -> (f32, f32) {
+        self.offset
+    }
+
     /// Bind a child node.
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
     pub fn get_child(&self) -> Option<NodeIndex> {
-        self.child
+        self.child.as_ref().map(OwnedIndex::shareable)
     }
 }
 
@@ -120,7 +122,9 @@ impl UiNode for Clip {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some(child) = self.child {
+        if let Some(child) = &self.child {
+            let child = child.shareable();
+
             let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
             let child = tree.get_node(child).expect("Child not in cache");
             let (cax, cay) = child.get_align();
@@ -159,6 +163,6 @@ impl UiNode for Clip {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.child.into_iter().collect()
+        self.child.iter().map(OwnedIndex::shareable).collect()
     }
 }

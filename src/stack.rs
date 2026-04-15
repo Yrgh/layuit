@@ -18,10 +18,8 @@
 //! [`Full`]: Alignment::Full
 //! [`Begin`]: Alignment::Begin
 
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 use indexmap::IndexSet;
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
 /// A horizontal arrangement of UI nodes with configurable spacing.
 ///
@@ -34,21 +32,27 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 /// [`Begin`]: Alignment::Begin
 pub struct HStack {
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
+    children: IndexSet<OwnedIndex>,
+    /// Spacing between children
     pub spacing: f32,
 }
 
 impl HStack {
+    /// Create a new horizontal stack with no children, 0 spacing, and ([`Full`], [`Begin`])
+    /// alignment
+    ///
+    /// [`Full`]: Alignment::Full
+    /// [`Begin`]: Alignment::Begin
     pub fn new() -> Self {
         Self {
-            align: (Alignment::Full, Alignment::Full),
+            align: (Alignment::Full, Alignment::Begin),
             children: IndexSet::new(),
             spacing: 0.0,
         }
     }
 
     /// Add a new child to the stack.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -74,7 +78,7 @@ impl HStack {
     }
 
     /// Add a child to the stack. The child will appear at the end.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -98,7 +102,7 @@ impl HStack {
             return false;
         };
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -116,7 +120,7 @@ impl HStack {
 
     /// Returns the tree index associated with a child at a given stack index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 }
 
@@ -143,7 +147,9 @@ impl UiNode for HStack {
         let mut w = 0.0f32;
         let mut h = 0.0f32;
         for child in &self.children {
-            let child = tree.get_cache(*child).expect("Child not in cache");
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (cw, ch) = child.min_size;
             w += cw + self.spacing;
             h = h.max(ch);
@@ -158,8 +164,10 @@ impl UiNode for HStack {
 
         let mut x = cache.rect.x;
         for child in &self.children {
-            let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.get_node(*child).expect("Child not in arena");
+            let child = child.shareable();
+
+            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+            let child = tree.get_node(child).expect("Child not in arena");
 
             let space = Rect::new(x, cache.rect.y, child_min.0, cache.rect.h)
                 .align(child.get_align(), child_min);
@@ -171,7 +179,7 @@ impl UiNode for HStack {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.children.iter().copied().collect()
+        self.children.iter().map(OwnedIndex::shareable).collect()
     }
 }
 
@@ -186,21 +194,27 @@ impl UiNode for HStack {
 /// [`Begin`]: Alignment::Begin
 pub struct VStack {
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
-    spacing: f32,
+    children: IndexSet<OwnedIndex>,
+    /// Spacing between children
+    pub spacing: f32,
 }
 
 impl VStack {
+    /// Creates a new vertical stack with no children, 0 spacing, and ([`Begin`], [`Full`])
+    /// alignment.
+    ///
+    /// [`Full`]: Alignment::Full
+    /// [`Begin`]: Alignment::Begin
     pub fn new() -> Self {
         Self {
-            align: (Alignment::Full, Alignment::Full),
+            align: (Alignment::Begin, Alignment::Full),
             children: IndexSet::new(),
             spacing: 0.0,
         }
     }
 
     /// Add a new child to the stack.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -235,7 +249,7 @@ impl VStack {
     }
 
     /// Add a child to the stack. The child will appear at the end.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -259,7 +273,7 @@ impl VStack {
             return false;
         };
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -277,7 +291,7 @@ impl VStack {
 
     /// Returns the tree index associated with a child at a given stack index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 }
 
@@ -304,7 +318,9 @@ impl UiNode for VStack {
         let mut w = 0.0f32;
         let mut h = 0.0f32;
         for child in &self.children {
-            let child = tree.get_cache(*child).expect("Child not in cache");
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (cw, ch) = child.min_size;
             w = w.max(cw);
             h += ch + self.spacing;
@@ -319,8 +335,10 @@ impl UiNode for VStack {
 
         let mut y = cache.rect.y;
         for child in &self.children {
-            let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.get_node(*child).expect("Child not in arena");
+            let child = child.shareable();
+
+            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+            let child = tree.get_node(child).expect("Child not in arena");
 
             let space = Rect::new(cache.rect.x, y, cache.rect.w, child_min.1)
                 .align(child.get_align(), child_min);
@@ -332,6 +350,6 @@ impl UiNode for VStack {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.children.iter().copied().collect()
+        self.children.iter().map(OwnedIndex::shareable).collect()
     }
 }

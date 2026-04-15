@@ -8,39 +8,35 @@
 //!
 //! [`HEqual`]: crate::grid::HEqual
 //! [`VEqual`]: crate::grid::VEqual
-//! [`HStack`]: crate::stacks::HStack
-//! [`VStack`]: crate::stacks::VStack
+//! [`HStack`]: crate::stack::HStack
+//! [`VStack`]: crate::stack::VStack
 //! [`Full`]: crate::Alignment::Full
 
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 use indexmap::IndexSet;
 use std::num::NonZero;
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 
 /// Arranges children from left to right, similar to [`HStack`], but gives every child equal space
 /// and does not suffer from the [`Full`] alignment caveat.
 ///
-/// [`HStack`]: crate::stacks::HStack
+/// [`HStack`]: crate::stack::HStack
 /// [`Full`]: crate::Alignment::Full
 pub struct HEqual {
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
+    children: IndexSet<OwnedIndex>,
 }
 
 impl HEqual {
-    /// Creates a new `HEqual` with no children, 0 spacing, and ([`Begin`], [`Begin`]) alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `HEqual` with no children, 0 spacing, and default alignment.
     pub fn new() -> Self {
         Self {
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             children: IndexSet::new(),
         }
     }
 
     /// Add a new child to the list.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -52,7 +48,7 @@ impl HEqual {
     }
 
     /// Add a child to the list. The child will appear at the end.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -76,7 +72,7 @@ impl HEqual {
             return false;
         };
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -94,7 +90,7 @@ impl HEqual {
 
     /// Returns the tree index associated with a child at a given list index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 }
 
@@ -121,7 +117,9 @@ impl UiNode for HEqual {
         let mut w = 0.0f32;
         let mut h = 0.0f32;
         for child in &self.children {
-            let child = tree.get_cache(*child).expect("Child not in cache");
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (cw, ch) = child.min_size;
             w = w.max(cw);
             h = h.max(ch);
@@ -141,8 +139,10 @@ impl UiNode for HEqual {
 
         let mut x = cache.rect.x;
         for child in &self.children {
-            let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.get_node(*child).expect("Child not in arena");
+            let child = child.shareable();
+
+            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+            let child = tree.get_node(child).expect("Child not in arena");
 
             let space =
                 Rect::new(x, cache.rect.y, w, cache.rect.h).align(child.get_align(), child_min);
@@ -154,33 +154,31 @@ impl UiNode for HEqual {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.children.iter().copied().collect()
+        self.children.iter().map(OwnedIndex::shareable).collect()
     }
 }
 
 /// Arranges children from top to bottom, similar to [`VStack`], but gives every child equal space
 /// and does not suffer from the [`Full`] alignment caveat.
 ///
-/// [`VStack`]: crate::stacks::VStack
+/// [`VStack`]: crate::stack::VStack
 /// [`Full`]: crate::Alignment::Full
 pub struct VEqual {
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
+    children: IndexSet<OwnedIndex>,
 }
 
 impl VEqual {
-    /// Creates a new `VEqual` with no children, 0 spacing, and ([`Begin`], [`Begin`]) alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `VEqual` with no children, 0 spacing, and default alignment.
     pub fn new() -> Self {
         Self {
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             children: IndexSet::new(),
         }
     }
 
     /// Add a new child to the list.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -192,7 +190,7 @@ impl VEqual {
     }
 
     /// Add a child to the list. The child will appear at the end.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -216,7 +214,7 @@ impl VEqual {
             return false;
         };
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -234,7 +232,7 @@ impl VEqual {
 
     /// Returns the tree index associated with a child at a given list index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 }
 
@@ -261,7 +259,9 @@ impl UiNode for VEqual {
         let mut w = 0.0f32;
         let mut h = 0.0f32;
         for child in &self.children {
-            let child = tree.get_cache(*child).expect("Child not in cache");
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (cw, ch) = child.min_size;
             w = w.max(cw);
             h = h.max(ch);
@@ -281,8 +281,10 @@ impl UiNode for VEqual {
 
         let mut y = cache.rect.y;
         for child in &self.children {
-            let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.get_node(*child).expect("Child not in arena");
+            let child = child.shareable();
+
+            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+            let child = tree.get_node(child).expect("Child not in arena");
 
             let space =
                 Rect::new(cache.rect.x, y, cache.rect.w, h).align(child.get_align(), child_min);
@@ -294,30 +296,31 @@ impl UiNode for VEqual {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.children.iter().copied().collect()
+        self.children.iter().map(OwnedIndex::shareable).collect()
     }
 }
 
 /// Arranges children in a grid of equally-sized cells, from left to right and then top to bottom.
 pub struct Grid {
+    /// The number of columns in the grid.
     pub num_cols: NonZero<usize>,
 
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
+    children: IndexSet<OwnedIndex>,
 }
 
 impl Grid {
-    /// Create a new grid with the specified number of columns.
+    /// Create a new grid with the specified number of columns, no children, and default alignment.
     pub fn new(num_cols: NonZero<usize>) -> Self {
         Self {
             num_cols,
-            align: (Alignment::Full, Alignment::Full),
+            align: Default::default(),
             children: IndexSet::new(),
         }
     }
 
     /// Add a new child to the grid.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.children.insert(index);
         self
     }
@@ -329,7 +332,7 @@ impl Grid {
     }
 
     /// Add a child to the grid. The child will appear at the end.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -353,7 +356,7 @@ impl Grid {
             return false;
         };
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -371,7 +374,7 @@ impl Grid {
 
     /// Returns the tree index associated with a child at a given list index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 }
 
@@ -388,7 +391,10 @@ impl UiNode for Grid {
         let mut w = 0.0f32;
         let mut h = 0.0f32;
         for child in &self.children {
-            let (cw, ch) = tree.get_cache(*child).expect("Child not in cache").min_size;
+            let (cw, ch) = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache")
+                .min_size;
             w = w.max(cw);
             h = h.max(ch);
         }
@@ -409,8 +415,10 @@ impl UiNode for Grid {
         let mut x = cache.rect.x;
         let mut y = cache.rect.y;
         for child in &self.children {
-            let child_min = tree.get_cache(*child).expect("Child not in cache").min_size;
-            let child = tree.get_node(*child).expect("Child not in arena");
+            let child = child.shareable();
+
+            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+            let child = tree.get_node(child).expect("Child not in arena");
 
             let space = Rect::new(x, y, dx, dy).align(child.get_align(), child_min);
             child_rects.push(space);
@@ -429,6 +437,6 @@ impl UiNode for Grid {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.children.iter().copied().collect()
+        self.children.iter().map(OwnedIndex::shareable).collect()
     }
 }

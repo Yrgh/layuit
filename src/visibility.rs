@@ -7,9 +7,7 @@
 
 use indexmap::IndexSet;
 
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 
 /// A node that optionally hides its child.
 ///
@@ -18,18 +16,19 @@ use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
 /// `use_visible` set to `true`, so that renderers don't attempt to render it, even if it has 0
 /// size.
 pub struct Hider {
+    /// Whether the child is hidden. Defaults to `false`.
     pub hidden: bool,
 
     align: (Alignment, Alignment),
-    child: Option<NodeIndex>,
+    child: Option<OwnedIndex>,
 }
 
 impl Hider {
-    /// Creates a new `Hider` with no child, no alignment, and shown.
+    /// Creates a new `Hider` with no child, default alignment, and shown.
     pub fn new() -> Self {
         Self {
             hidden: false,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             child: None,
         }
     }
@@ -44,7 +43,7 @@ impl Hider {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -60,7 +59,7 @@ impl Hider {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
@@ -83,9 +82,11 @@ impl UiNode for Hider {
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
         if !self.hidden
-            && let Some(child) = self.child
+            && let Some(child) = self.child.as_ref()
         {
-            tree.get_cache(child).expect("Child not in cache").min_size
+            tree.get_cache(child.shareable())
+                .expect("Child not in cache")
+                .min_size
         } else {
             (0.0, 0.0)
         }
@@ -93,8 +94,10 @@ impl UiNode for Hider {
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
         if !self.hidden
-            && let Some(child) = self.child
+            && let Some(child) = self.child.as_ref()
         {
+            let child = child.shareable();
+
             let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
             let child = tree.get_node(child).expect("Child not in cache");
             let space = cache.rect.align(child.get_align(), child_min);
@@ -105,14 +108,14 @@ impl UiNode for Hider {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.child.into_iter().collect()
+        self.child.iter().map(OwnedIndex::shareable).collect()
     }
 
     fn get_visible_children(&self) -> Vec<NodeIndex> {
         if !self.hidden
-            && let Some(child) = self.child
+            && let Some(child) = self.child.as_ref()
         {
-            vec![child]
+            vec![child.shareable()]
         } else {
             vec![]
         }
@@ -131,26 +134,23 @@ pub struct Selector {
     selected: Option<NodeIndex>,
 
     align: (Alignment, Alignment),
-    children: IndexSet<NodeIndex>,
+    children: IndexSet<OwnedIndex>,
 }
 
 impl Selector {
-    /// Create an empty `Selector` with no children, no selection, and alignment ([`Begin`],
-    /// [`Begin`]).
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Create an empty `Selector` with no children, no selection, and default alignment.
     pub fn new() -> Self {
         Self {
             selected: None,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             children: IndexSet::new(),
         }
     }
 
     /// Add a new child to the list. If there are no other children, the new child will be selected.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         if self.selected.is_none() {
-            self.selected = Some(index);
+            self.selected = Some(index.shareable());
         }
         self.children.insert(index);
         self
@@ -163,7 +163,7 @@ impl Selector {
     }
 
     /// Add a child to the list.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         self.children.insert(index);
     }
 
@@ -188,12 +188,12 @@ impl Selector {
         };
 
         if let Some(selected) = self.selected
-            && ti == selected
+            && ti.shareable() == selected
         {
             self.selected = None;
         }
 
-        if tree.get_node(ti).is_none() {
+        if tree.get_node(ti.shareable()).is_none() {
             return false;
         }
         tree.remove_node(ti);
@@ -211,7 +211,7 @@ impl Selector {
 
     /// Returns the tree index associated with a child at a given list index.
     pub fn get_child_index(&self, index: usize) -> Option<NodeIndex> {
-        self.children.get_index(index).copied()
+        self.children.get_index(index).map(OwnedIndex::shareable)
     }
 
     /// Returns the tree index of the currently-selected node.
@@ -231,7 +231,7 @@ impl Selector {
 
     /// Sets the selected node to the given list index.
     pub fn set_selected_index(&mut self, index: usize) {
-        self.selected = self.children.get_index(index).copied()
+        self.selected = self.children.get_index(index).map(OwnedIndex::shareable)
     }
 
     /// Removes the selection.
@@ -275,7 +275,7 @@ impl UiNode for Selector {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.children.iter().copied().collect()
+        self.children.iter().map(OwnedIndex::shareable).collect()
     }
 
     fn get_visible_children(&self) -> Vec<NodeIndex> {

@@ -16,31 +16,29 @@
 //! the `Percent` will not ensure the percentage is always maintained if it is too small.
 //!
 //! ```rust
-//! use layuit::{UiTree, Rect};
+//! use layuit::Rect;
 //! use layuit::proportion::Percent;
-//! use layuit::stacks::HStack;
+//! use layuit::stack::HStack;
 //! use layuit::padding::Spacer;
 //!
-//! let (_, mut tree) = layuit::ui!(
+//! let mut tree = layuit::ui!(
 //!     %%,
 //!     +|+ HStack::new() => [
-//!         +|+ Percent::new()
+//!         -|- Percent::new()
 //!             .with_percent((0.5, 0.5))
 //!             .with_strict(true)
 //!         => [
-//!             +|+ Spacer::sized((10.0, 10.0))
+//!             -|- Spacer::sized((10.0, 10.0))
 //!         ],
-//!         +|+ Percent::new()
+//!         -|- Percent::new()
 //!             .with_percent((0.5, 0.5))
 //!             .with_strict(false)
 //!         => [
-//!             +|+ Spacer::sized((10.0, 10.0))
+//!             -|- Spacer::sized((10.0, 10.0))
 //!         ],
 //!     ]
 //! );
 //!
-//! // Both Percents hold a Spacer with a size of 10x10 and occupy the full space.
-//! 
 //! tree.calculate_layout(Rect::new(0.0, 0.0, 30.0, 20.0));
 //!
 //! // Final results:
@@ -50,9 +48,8 @@
 //! // non_strict has a size of 10x10, since its minimum remained the same as the spacer, and the
 //! // percentage was not upheld.
 //! ```
-use thunderdome::Index as NodeIndex;
 
-use crate::{Alignment, Anchor, NodeCache, Rect, UiNode, UiTree};
+use crate::{Alignment, Anchor, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 
 /// Expands the horizontal or vertical dimensions of a child to maintain an aspect ratio.
 ///
@@ -67,19 +64,17 @@ pub struct AspectRatio {
     pub anchor: (Anchor, Anchor),
 
     align: (Alignment, Alignment),
-    child: Option<NodeIndex>,
+    child: Option<OwnedIndex>,
 }
 
 impl AspectRatio {
-    /// Creates a new `AspectRatio` with no child, default anchoring, a 1:1 ratio, and ([`Begin`],
-    /// [`Begin`]) alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `AspectRatio` with no child, default anchoring, a 1:1 ratio, and default
+    /// alignment.
     pub fn new() -> Self {
         Self {
             ratio: 1.0,
             anchor: (Anchor::Center, Anchor::Center),
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             child: None,
         }
     }
@@ -88,7 +83,7 @@ impl AspectRatio {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -134,14 +129,14 @@ impl AspectRatio {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
     pub fn get_child(&self) -> Option<NodeIndex> {
-        self.child
+        self.child.as_ref().map(OwnedIndex::shareable)
     }
 }
 
@@ -161,8 +156,11 @@ impl UiNode for AspectRatio {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some(child) = self.child {
-            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+        if let Some(child) = &self.child {
+            let child_min = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache")
+                .min_size;
 
             // Prevent division by zero
             if child_min.0 == 0.0 || child_min.1 == 0.0 {
@@ -183,8 +181,11 @@ impl UiNode for AspectRatio {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some(child) = self.child {
-            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+        if let Some(child) = &self.child {
+            let child_min = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache")
+                .min_size;
 
             // Prevent division by zero
             if child_min.0 == 0.0 || child_min.1 == 0.0 {
@@ -213,7 +214,7 @@ impl UiNode for AspectRatio {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.child.into_iter().collect()
+        self.child.iter().map(OwnedIndex::shareable).collect()
     }
 }
 
@@ -229,20 +230,17 @@ pub struct HSplit {
     percent: f32,
 
     align: (Alignment, Alignment),
-    left: Option<NodeIndex>,
-    right: Option<NodeIndex>,
+    left: Option<OwnedIndex>,
+    right: Option<OwnedIndex>,
 }
 
 impl HSplit {
-    /// Creates a new `HSplit` with no children, 0 spacing, 50/50 split, and ([`Begin`], [`Begin`])
-    /// alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `HSplit` with no children, 0 spacing, 50/50 split, and default alignment.
     pub fn new() -> Self {
         Self {
             spacing: 0.0,
             percent: 0.5,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             left: None,
             right: None,
         }
@@ -252,7 +250,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If there are already child nodes.
-    pub fn with_children(mut self, left: NodeIndex, right: NodeIndex) -> Self {
+    pub fn with_children(mut self, left: OwnedIndex, right: OwnedIndex) -> Self {
         assert!(self.left.is_none() && self.right.is_none());
         self.left = Some(left);
         self.right = Some(right);
@@ -263,7 +261,7 @@ impl HSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.add_child(index);
         self
     }
@@ -309,7 +307,7 @@ impl HSplit {
     /// # Panics
     /// If the left slot is not set
     pub fn get_left_index(&self) -> NodeIndex {
-        self.left.expect("Left slot not set")
+        self.left.as_ref().expect("Left slot not set").shareable()
     }
 
     /// Get the index of the right child
@@ -317,14 +315,14 @@ impl HSplit {
     /// # Panics
     /// If the right slot is not set
     pub fn get_right_index(&self) -> NodeIndex {
-        self.right.expect("Right slot not set")
+        self.right.as_ref().expect("Right slot not set").shareable()
     }
 
     /// Binds a child node to the left slot, or the right, if the left is occupied.
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         if self.left.is_none() {
             self.left = Some(index);
         } else if self.right.is_none() {
@@ -349,7 +347,10 @@ impl UiNode for HSplit {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some((left, right)) = self.left.zip(self.right) {
+        if let Some((left, right)) = self.left.as_ref().zip(self.right.as_ref()) {
+            let left = left.shareable();
+            let right = right.shareable();
+
             let left_min = tree
                 .get_cache(left)
                 .expect("Left child not in cache")
@@ -368,7 +369,10 @@ impl UiNode for HSplit {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some((left, right)) = self.left.zip(self.right) {
+        if let Some((left, right)) = self.left.as_ref().zip(self.right.as_ref()) {
+            let left = left.shareable();
+            let right = right.shareable();
+
             let left_min = tree
                 .get_cache(left)
                 .expect("Left child not in cache")
@@ -398,8 +402,8 @@ impl UiNode for HSplit {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        if let Some((left, right)) = self.left.zip(self.right) {
-            vec![left, right]
+        if let Some((left, right)) = self.left.as_ref().zip(self.right.as_ref()) {
+            vec![left.shareable(), right.shareable()]
         } else {
             vec![]
         }
@@ -418,20 +422,17 @@ pub struct VSplit {
     percent: f32,
 
     align: (Alignment, Alignment),
-    top: Option<NodeIndex>,
-    bot: Option<NodeIndex>,
+    top: Option<OwnedIndex>,
+    bot: Option<OwnedIndex>,
 }
 
 impl VSplit {
-    /// Creates a new `VSplit` with no children, 0 spacing, 50/50 split, and ([`Begin`], [`Begin`])
-    /// alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `VSplit` with no children, 0 spacing, 50/50 split, and default alignment.
     pub fn new() -> Self {
         Self {
             spacing: 0.0,
             percent: 0.5,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             top: None,
             bot: None,
         }
@@ -441,7 +442,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If there are already child nodes.
-    pub fn with_children(mut self, top: NodeIndex, bottom: NodeIndex) -> Self {
+    pub fn with_children(mut self, top: OwnedIndex, bottom: OwnedIndex) -> Self {
         assert!(self.top.is_none() && self.bot.is_none());
         self.top = Some(top);
         self.bot = Some(bottom);
@@ -452,7 +453,7 @@ impl VSplit {
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.add_child(index);
         self
     }
@@ -498,7 +499,7 @@ impl VSplit {
     /// # Panics
     /// If the top node is not set.
     pub fn get_top_index(&self) -> NodeIndex {
-        self.top.expect("Top slot not set")
+        self.top.as_ref().expect("Top slot not set").shareable()
     }
 
     /// Returns the tree index of the bottom node.
@@ -506,14 +507,14 @@ impl VSplit {
     /// # Panics
     /// If the top node is not set.
     pub fn get_bottom_index(&self) -> NodeIndex {
-        self.bot.expect("Bottom slot not set")
+        self.bot.as_ref().expect("Bottom slot not set").shareable()
     }
 
     /// Binds a child node to the top slot, or the bottom, if the top is occupied.
     ///
     /// # Panics
     /// If both left and right are set.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         if self.top.is_none() {
             self.top = Some(index);
         } else if self.bot.is_none() {
@@ -540,7 +541,10 @@ impl UiNode for VSplit {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some((top, bot)) = self.top.zip(self.bot) {
+        if let Some((top, bot)) = self.top.as_ref().zip(self.bot.as_ref()) {
+            let top = top.shareable();
+            let bot = bot.shareable();
+
             let top_min = tree
                 .get_cache(top)
                 .expect("Top child not in cache")
@@ -559,7 +563,10 @@ impl UiNode for VSplit {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some((top, bot)) = self.top.zip(self.bot) {
+        if let Some((top, bot)) = self.top.as_ref().zip(self.bot.as_ref()) {
+            let top = top.shareable();
+            let bot = bot.shareable();
+
             let top_min = tree
                 .get_cache(top)
                 .expect("Top child not in cache")
@@ -589,8 +596,8 @@ impl UiNode for VSplit {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        if let Some((top, bot)) = self.top.zip(self.bot) {
-            vec![top, bot]
+        if let Some((top, bot)) = self.top.as_ref().zip(self.bot.as_ref()) {
+            vec![top.shareable(), bot.shareable()]
         } else {
             vec![]
         }
@@ -608,23 +615,22 @@ pub struct Percent {
     /// If `true`, the minimum size grows to ensure the percentage is always maintained.
     pub strict: bool,
     percent: (f32, f32),
+    /// The anchor of the child within the shrunk space.
     pub anchor: (Anchor, Anchor),
 
     align: (Alignment, Alignment),
-    child: Option<NodeIndex>,
+    child: Option<OwnedIndex>,
 }
 
 impl Percent {
     /// Creates a new `Percent` with no child, no alignment, default anchoring, a (100%, 100%)
-    /// percent, `strict` disabled, and ([`Begin`], [`Begin`]) alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// percent, `strict` disabled, and default alignment.
     pub fn new() -> Self {
         Self {
             strict: false,
             percent: (1.0, 1.0),
             anchor: (Anchor::Begin, Anchor::Begin),
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             child: None,
         }
     }
@@ -633,7 +639,7 @@ impl Percent {
     ///
     /// # Panics
     /// If the child is already set
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -720,14 +726,14 @@ impl Percent {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
     pub fn get_child(&self) -> Option<NodeIndex> {
-        self.child
+        self.child.as_ref().map(OwnedIndex::shareable)
     }
 }
 
@@ -747,8 +753,11 @@ impl UiNode for Percent {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some(child) = self.child {
-            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+        if let Some(child) = &self.child {
+            let child_min = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache")
+                .min_size;
             if self.strict {
                 // If percent is 50%, the minimum size doubles.
                 (child_min.0 / self.percent.0, child_min.1 / self.percent.1)
@@ -761,8 +770,11 @@ impl UiNode for Percent {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some(child) = self.child {
-            let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
+        if let Some(child) = &self.child {
+            let child_min = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache")
+                .min_size;
             // Child gets enough space but can get up to the percent.
             let w = child_min.0.max(cache.rect.w * self.percent.0);
             let h = child_min.1.max(cache.rect.h * self.percent.1);
@@ -776,8 +788,8 @@ impl UiNode for Percent {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        if let Some(child) = self.child {
-            vec![child]
+        if let Some(child) = &self.child {
+            vec![child.shareable()]
         } else {
             vec![]
         }

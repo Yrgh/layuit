@@ -1,22 +1,20 @@
 //! 3-way splits
-//! 
+//!
 //! Unlike [`HSplit`] and [`VSplit`] from [`proportion`], [`HSplit3`] and [`VSplit3`] use a node
 //! as a separator, instead of a fixed space. This can be used to make a before/after image with
 //! a handle in between.
-//! 
+//!
 //! [`HSplit`]: crate::proportion::HSplit
 //! [`VSplit`]: crate::proportion::VSplit
 //! [`proportion`]: crate::proportion
 
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 
 /// Splits the space between 2 children, with a separator, rather than spacing, in between.
-/// 
-/// The separator is always shrunk horizontally, and every node recieves at least its minimum size,
+///
+/// The separator is always shrunk horizontally, and every node receives at least its minimum size,
 /// even if that contradicts the percentage.
-/// 
+///
 /// The percentage excludes the space of the separator. A percentage of 0.0 will shrink the right
 /// child and give the remaining space to the left. A percentage of 1.0 will shrink the left child
 /// and give the remaining space to the right.
@@ -25,31 +23,28 @@ pub struct HSplit3 {
 
     align: (Alignment, Alignment),
 
-    left: Option<NodeIndex>,
-    sep: Option<NodeIndex>,
-    right: Option<NodeIndex>,
+    left: Option<OwnedIndex>,
+    sep: Option<OwnedIndex>,
+    right: Option<OwnedIndex>,
 }
 
 impl HSplit3 {
-    /// Creates a new horizontal split with no children, 50/50 split, and ([`Begin`], [`Begin`])
-    /// alignment.
-    /// 
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new horizontal split with no children, 50/50 split, and default alignment.
     pub fn new() -> Self {
         Self {
             percent: 0.5,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             left: None,
             sep: None,
-            right: None
+            right: None,
         }
     }
 
     /// Binds the left, separator, and right children to the node.
-    /// 
+    ///
     /// # Panics
     /// If any slot is already set.
-    pub fn with_children(mut self, left: NodeIndex, sep: NodeIndex, right: NodeIndex) -> Self {
+    pub fn with_children(mut self, left: OwnedIndex, sep: OwnedIndex, right: OwnedIndex) -> Self {
         assert!(self.left.is_none() || self.sep.is_none() || self.right.is_none());
         self.left = Some(left);
         self.sep = Some(sep);
@@ -58,10 +53,10 @@ impl HSplit3 {
     }
 
     /// Binds a child to the node. The left slot is set first, then the separator, then the right.
-    /// 
+    ///
     /// # Panics
     /// If all slots are set.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.add_child(index);
         self
     }
@@ -73,7 +68,7 @@ impl HSplit3 {
     }
 
     /// Sets the percentage of the node.
-    /// 
+    ///
     /// # Panics
     /// If the percentage is not between 0.0 and 1.0
     pub fn with_percent(mut self, percent: f32) -> Self {
@@ -83,10 +78,10 @@ impl HSplit3 {
     }
 
     /// Binds a child to the node. The left slot is set first, then the separator, then the right.
-    /// 
+    ///
     /// # Panics
     /// If all slots are set.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         if self.left.is_none() {
             self.left = Some(index);
         } else if self.sep.is_none() {
@@ -99,7 +94,7 @@ impl HSplit3 {
     }
 
     /// Sets the percentage of the node.
-    /// 
+    ///
     /// # Panics
     /// If the percentage is not between 0.0 and 1.0
     pub fn set_percent(&mut self, percent: f32) {
@@ -113,27 +108,27 @@ impl HSplit3 {
     }
 
     /// Get the index of the left child
-    /// 
+    ///
     /// # Panics
     /// If the left node is not set
     pub fn get_left_index(&self) -> NodeIndex {
-        self.left.expect("Left slot not set")
+        self.left.as_ref().expect("Left slot not set").shareable()
     }
 
     /// Get the index of the right child
-    /// 
+    ///
     /// # Panics
     /// If the right node is not set
     pub fn get_right_index(&self) -> NodeIndex {
-        self.right.expect("Right slot not set")
+        self.right.as_ref().expect("Right slot not set").shareable()
     }
 
     /// Get the index of the separator
-    /// 
+    ///
     /// # Panics
     /// If the separator node is not set
     pub fn get_sep_index(&self) -> NodeIndex {
-        self.sep.expect("Sep slot not set")
+        self.sep.as_ref().expect("Sep slot not set").shareable()
     }
 }
 
@@ -153,15 +148,15 @@ impl UiNode for HSplit3 {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        let Some(left) = self.left else {
+        let Some(left) = self.left.as_ref().map(OwnedIndex::shareable) else {
             return (0.0, 0.0);
         };
 
-        let Some(right) = self.right else {
+        let Some(right) = self.right.as_ref().map(OwnedIndex::shareable) else {
             return (0.0, 0.0);
         };
 
-        let Some(sep) = self.sep else {
+        let Some(sep) = self.sep.as_ref().map(OwnedIndex::shareable) else {
             return (0.0, 0.0);
         };
 
@@ -185,15 +180,15 @@ impl UiNode for HSplit3 {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        let Some(left) = self.left else {
+        let Some(left) = self.left.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
 
-        let Some(right) = self.right else {
+        let Some(right) = self.right.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
 
-        let Some(sep) = self.sep else {
+        let Some(sep) = self.sep.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
 
@@ -232,13 +227,13 @@ impl UiNode for HSplit3 {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        let Some(left) = self.left else {
+        let Some(left) = self.left.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
-        let Some(sep) = self.sep else {
+        let Some(sep) = self.sep.as_ref().map(OwnedIndex::shareable) else {
             return vec![left];
         };
-        let Some(right) = self.right else {
+        let Some(right) = self.right.as_ref().map(OwnedIndex::shareable) else {
             return vec![left, sep];
         };
 
@@ -247,10 +242,10 @@ impl UiNode for HSplit3 {
 }
 
 /// Splits the space between 2 children, with a separator, rather than spacing, in between.
-/// 
-/// The separator is always shrunk vertically, and every node recieves at least its minimum size,
+///
+/// The separator is always shrunk vertically, and every node receives at least its minimum size,
 /// but if a node would not receive its minimum size, the percentage is bypassed.
-/// 
+///
 /// The percentage excludes the space of the separator. A percentage of 0.0 will shrink the bottom
 /// child to its minimum size and give the remaining space to the top, and a percentage of 1.0 will
 /// shrink the top child to its minimum size and give the remaining space to the bottom.
@@ -258,31 +253,28 @@ pub struct VSplit3 {
     percent: f32,
     align: (Alignment, Alignment),
 
-    top: Option<NodeIndex>,
-    sep: Option<NodeIndex>,
-    bot: Option<NodeIndex>
+    top: Option<OwnedIndex>,
+    sep: Option<OwnedIndex>,
+    bot: Option<OwnedIndex>,
 }
 
 impl VSplit3 {
-    /// Creates a new vertical split with no children, 50/50 split, and ([`Begin`], [`Begin`])
-    /// alignment.
-    /// 
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new vertical split with no children, 50/50 split, and default alignment
     pub fn new() -> Self {
         Self {
             percent: 0.5,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             top: None,
             sep: None,
-            bot: None
+            bot: None,
         }
     }
 
     /// Binds the top, separator, and bottom children to the node.
-    /// 
+    ///
     /// # Panics
     /// If any children are already bound.
-    pub fn with_children(mut self, top: NodeIndex, sep: NodeIndex, bot: NodeIndex) -> Self {
+    pub fn with_children(mut self, top: OwnedIndex, sep: OwnedIndex, bot: OwnedIndex) -> Self {
         assert!(self.top.is_none() || self.sep.is_none() || self.bot.is_none());
         self.top = Some(top);
         self.sep = Some(sep);
@@ -291,16 +283,16 @@ impl VSplit3 {
     }
 
     /// Binds a child to the node. The top slot is set first, then the separator, then the bottom.
-    /// 
+    ///
     /// # Panics
     /// If all slots are set.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         self.add_child(index);
         self
     }
 
     /// Sets the percentage of the node.
-    /// 
+    ///
     /// # Panics
     /// If the percentage is not between 0.0 and 1.0
     pub fn with_percent(mut self, percent: f32) -> Self {
@@ -315,10 +307,10 @@ impl VSplit3 {
     }
 
     /// Binds a child to the node. The top slot is set first, then the separator, then the bottom.
-    /// 
+    ///
     /// # Panics
     /// If all slots are set.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         if self.top.is_none() {
             self.top = Some(index);
         } else if self.sep.is_none() {
@@ -331,7 +323,7 @@ impl VSplit3 {
     }
 
     /// Sets the percentage of the node.
-    /// 
+    ///
     /// # Panics
     /// If the percentage is not between 0.0 and 1.0
     pub fn set_percent(&mut self, percent: f32) {
@@ -345,27 +337,30 @@ impl VSplit3 {
     }
 
     /// Returns the tree index of the top node.
-    /// 
+    ///
     /// # Panics
     /// If the top node is not set.
     pub fn get_top_index(&self) -> NodeIndex {
-        self.top.expect("Top child not bound")
+        self.top.as_ref().expect("Top child not bound").shareable()
     }
 
     /// Returns the tree index of the bottom node.
-    /// 
+    ///
     /// # Panics
     /// If the bottom node is not set.
     pub fn get_bot_index(&self) -> NodeIndex {
-        self.bot.expect("Bottom child not bound")
+        self.bot
+            .as_ref()
+            .expect("Bottom child not bound")
+            .shareable()
     }
 
     /// Returns the tree index of the separator node.
-    /// 
+    ///
     /// # Panics
     /// If the separator node is not set.
     pub fn get_sep_index(&self) -> NodeIndex {
-        self.sep.expect("Sep child not bound")
+        self.sep.as_ref().expect("Sep child not bound").shareable()
     }
 }
 
@@ -385,15 +380,15 @@ impl UiNode for VSplit3 {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        let Some(top) = self.top else {
+        let Some(top) = self.top.as_ref().map(OwnedIndex::shareable) else {
             return (0.0, 0.0);
         };
 
-        let Some(sep) = self.sep else {
+        let Some(sep) = self.sep.as_ref().map(OwnedIndex::shareable) else {
             return (0.0, 0.0);
         };
 
-        let Some(bot) = self.bot else {
+        let Some(bot) = self.bot.as_ref().map(OwnedIndex::shareable) else {
             return (0.0, 0.0);
         };
 
@@ -417,13 +412,13 @@ impl UiNode for VSplit3 {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        let Some(top) = self.top else {
+        let Some(top) = self.top.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
-        let Some(sep) = self.sep else {
+        let Some(sep) = self.sep.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
-        let Some(bot) = self.bot else {
+        let Some(bot) = self.bot.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
 
@@ -461,13 +456,13 @@ impl UiNode for VSplit3 {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        let Some(top) = self.top else {
+        let Some(top) = self.top.as_ref().map(OwnedIndex::shareable) else {
             return vec![];
         };
-        let Some(sep) = self.sep else {
+        let Some(sep) = self.sep.as_ref().map(OwnedIndex::shareable) else {
             return vec![top];
         };
-        let Some(bot) = self.bot else {
+        let Some(bot) = self.bot.as_ref().map(OwnedIndex::shareable) else {
             return vec![top, sep];
         };
 

@@ -14,12 +14,38 @@
 //!
 //! To avoid the alignment shift while keeping centering, have symmetrical margins or use
 //! [`Minimum`] with the intended area.
+//! 
+//! ## Negative margins
+//! 
+//! [`Margin`] supports negative values for all of its margins. A negative value causes the node to
+//! grow its minimum size by the absolute value, but does no shrinking. This can be used to make a
+//! node additively larger than its minimum size, rather than statically.
+//! 
+//! ```rust
+//! use layuit::padding::{Margin, Spacer};
+//! use layuit::stack::VStack;
+//! use layuit::Rect;
+//! 
+//! let mut tree = layuit::ui!(
+//!     %%,
+//!     +|+ VStack::new() => [
+//!         -|- Margin::new().with_equal(-4.0) => [
+//!             +|+ Spacer::sized((10.0, 10.0))
+//!         ],
+//!         -|- Margin::new().with_equal(4.0) => [
+//!             +|+ Spacer::sized((10.0, 10.0))
+//!         ],
+//!     ]
+//! );
+//! 
+//! tree.calculate_layout(Rect::new(0.0, 0.0, 20.0, 40.0));
+//! 
+//! // Both margins have size 18.0, but only the first spacer grows to size 18.0
+//! ```
 //!
 //! [`Center`]: Alignment::Center
 
-use thunderdome::Index as NodeIndex;
-
-use crate::{Alignment, NodeCache, Rect, UiNode, UiTree};
+use crate::{Alignment, NodeCache, NodeIndex, OwnedIndex, Rect, UiNode, UiTree};
 
 /// Maintains a margin around a singular child.
 ///
@@ -46,20 +72,18 @@ pub struct Margin {
     pub bottom: f32,
 
     align: (Alignment, Alignment),
-    child: Option<NodeIndex>,
+    child: Option<OwnedIndex>,
 }
 
 impl Margin {
-    /// Creates a new `Margin` with no child, no margin, and ([`Begin`], [`Begin`]) alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `Margin` with no child, no margin, and default alignment.
     pub fn new() -> Self {
         Self {
             left: 0.0,
             right: 0.0,
             top: 0.0,
             bottom: 0.0,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
             child: None,
         }
     }
@@ -68,7 +92,7 @@ impl Margin {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -147,7 +171,7 @@ impl Margin {
 
     /// Get the tree index of the child.
     pub fn get_child(&self) -> Option<NodeIndex> {
-        self.child
+        self.child.as_ref().map(OwnedIndex::shareable)
     }
 }
 
@@ -171,8 +195,10 @@ impl UiNode for Margin {
         let right = self.right.abs();
         let top = self.top.abs();
         let bottom = self.bottom.abs();
-        if let Some(child) = self.child {
-            let child = tree.get_cache(child).expect("Child not in cache");
+        if let Some(child) = &self.child {
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (w, h) = child.min_size;
             (w + left + right, h + top + bottom)
         } else {
@@ -181,9 +207,11 @@ impl UiNode for Margin {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        let Some(child_idx) = self.child else {
+        let Some(child_idx) = self.child.as_ref() else {
             return vec![];
         };
+
+        let child_idx = child_idx.shareable();
 
         let left = self.left.max(0.0);
         let right = self.right.max(0.0);
@@ -208,7 +236,7 @@ impl UiNode for Margin {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.child.into_iter().collect()
+        self.child.iter().map(OwnedIndex::shareable).collect()
     }
 }
 
@@ -220,20 +248,17 @@ pub struct Minimum {
     /// The minimum size to maintain.
     pub min_override: (f32, f32),
 
-    child: Option<NodeIndex>,
+    child: Option<OwnedIndex>,
     align: (Alignment, Alignment),
 }
 
 impl Minimum {
-    /// Creates a new `Minimum` with no child, no minimum override, and ([`Begin`], [`Begin`])
-    /// alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `Minimum` with no child, no minimum override, and default alignment.
     pub fn new() -> Self {
         Self {
             min_override: (0.0, 0.0),
             child: None,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
         }
     }
 
@@ -241,7 +266,7 @@ impl Minimum {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn with_child(mut self, index: NodeIndex) -> Self {
+    pub fn with_child(mut self, index: OwnedIndex) -> Self {
         assert!(self.child.is_none());
         self.child = Some(index);
         self
@@ -263,14 +288,14 @@ impl Minimum {
     ///
     /// # Panics
     /// If there is already a child node.
-    pub fn add_child(&mut self, index: NodeIndex) {
+    pub fn add_child(&mut self, index: OwnedIndex) {
         assert!(self.child.is_none());
         self.child = Some(index);
     }
 
     /// Get the tree index of the child.
     pub fn get_child(&self) -> Option<NodeIndex> {
-        self.child
+        self.child.as_ref().map(OwnedIndex::shareable)
     }
 }
 
@@ -290,8 +315,10 @@ impl UiNode for Minimum {
     }
 
     fn calculate_min_size(&self, tree: &UiTree) -> (f32, f32) {
-        if let Some(child) = self.child {
-            let child = tree.get_cache(child).expect("Child not in cache");
+        if let Some(child) = self.child.as_ref() {
+            let child = tree
+                .get_cache(child.shareable())
+                .expect("Child not in cache");
             let (w, h) = child.min_size;
             (w.max(self.min_override.0), h.max(self.min_override.1))
         } else {
@@ -300,7 +327,9 @@ impl UiNode for Minimum {
     }
 
     fn calculate_rects(&self, cache: &NodeCache, tree: &UiTree) -> Vec<Rect> {
-        if let Some(child) = self.child {
+        if let Some(child) = &self.child {
+            let child = child.shareable();
+
             let child_min = tree.get_cache(child).expect("Child not in cache").min_size;
             let child = tree.get_node(child).expect("Child not in cache");
             let space = cache.rect.align(child.get_align(), child_min);
@@ -311,7 +340,7 @@ impl UiNode for Minimum {
     }
 
     fn get_children(&self) -> Vec<NodeIndex> {
-        self.child.into_iter().collect()
+        self.child.iter().map(OwnedIndex::shareable).collect()
     }
 }
 
@@ -323,27 +352,21 @@ pub struct Spacer {
 }
 
 impl Spacer {
-    /// Creates a new `Spacer` with no size and ([`Begin`], [`Begin`])
-    /// alignment.
-    ///
-    /// [`Begin`]: Alignment::Begin
+    /// Creates a new `Spacer` with no size and default alignment.
     pub fn new() -> Self {
         Self {
             size: (0.0, 0.0),
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
         }
     }
 
-    /// Creates a new `Spacer` with the given size and ([`Begin`], [`Begin`])
-    /// alignment.
+    /// Creates a new `Spacer` with the given size and default alignment.
     ///
     /// Equivalent to `Spacer::new().with_size(size)`.
-    ///
-    /// [`Begin`]: Alignment::Begin
     pub fn sized(size: (f32, f32)) -> Self {
         Self {
             size,
-            align: (Alignment::Begin, Alignment::Begin),
+            align: Default::default(),
         }
     }
 
